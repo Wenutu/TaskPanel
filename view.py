@@ -60,7 +60,7 @@ def draw_ui(stdscr, model, view_state):
             info_header_x = 1 + max_name_len + 2
             stdscr.attron(curses.color_pair(COLOR_PAIR_TABLE_HEADER)); stdscr.addstr(header_y, info_header_x, model.dynamic_header[1].center(info_col_width)); stdscr.attroff(curses.color_pair(COLOR_PAIR_TABLE_HEADER))
             
-            # ### MODIFIED: Draw headers based on horizontal scroll ###
+            # Draw headers based on horizontal scroll
             available_width = w - (info_header_x + info_col_width + 3)
             num_visible_steps = max(1, available_width // step_col_width)
             for i in range(left_most_step, min(left_most_step + num_visible_steps, len(model.dynamic_header) - 2)):
@@ -79,10 +79,10 @@ def draw_ui(stdscr, model, view_state):
             
             stdscr.addstr(draw_y, 1, task["name"].center(max_name_len), curses.A_REVERSE if i == selected_row else curses.A_NORMAL)
             
-            # ### MODIFIED: Highlight Info column if selected_col is -1 ###
+            # Highlight Info column if selected_col is -1
             info_text_x = 1 + max_name_len + 2
             full_info_text = task.get('info', '')
-            # ### NEW: Split info into lines and take the first one ###
+            # NEW: Split info into lines and take the first one
             info_lines = full_info_text.splitlines()
             first_line = info_lines[0] if info_lines else ""
             # Replace newline characters to avoid breaking the layout, just in case
@@ -91,7 +91,7 @@ def draw_ui(stdscr, model, view_state):
             info_attr = curses.color_pair(COLOR_PAIR_SELECTED) if (i == selected_row and selected_col == -1) else curses.A_NORMAL
             stdscr.addstr(draw_y, info_text_x, first_line[:info_col_width-1].ljust(info_col_width), info_attr)
             
-            # ### MODIFIED: Draw step statuses based on horizontal scroll ###
+            # Draw step statuses based on horizontal scroll
             for j in range(left_most_step, min(left_most_step + num_visible_steps, len(task["steps"]))):
                 on_screen_col_idx = j - left_most_step
                 step = task["steps"][j]
@@ -100,7 +100,7 @@ def draw_ui(stdscr, model, view_state):
                 if start_x + step_col_width < w: stdscr.addstr(draw_y, start_x, f" {step['status']} ".center(step_col_width), attr)
             last_drawn_y = draw_y
             
-        # --- Draw Output Panel with Context ###
+        # --- Draw Output Panel with Context
         output_start_y = last_drawn_y + 2
         if output_start_y < main_area_h:
             stdscr.hline(output_start_y - 1, 0, curses.ACS_HLINE, w)                

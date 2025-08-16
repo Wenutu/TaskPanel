@@ -20,7 +20,6 @@ class AppController:
         self.model = TaskModel(csv_path)
         self.app_running = True
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
-        # ### MODIFIED: Re-added debug_panel_visible to the view state ###
         self.view_state = {
             'top_row': 0, 'selected_row': 0, 'selected_col': 0,
             'left_most_step': 0, 'debug_panel_visible': False
@@ -69,11 +68,10 @@ class AppController:
             vs['selected_row'] = min(len(self.model.tasks) - 1, vs['selected_row'] + task_list_h)
             vs['top_row'] = min(max(0, len(self.model.tasks) - task_list_h), vs['top_row'] + task_list_h)
 
-        # ### MODIFIED: Horizontal Navigation & Scrolling ###
+        # Horizontal Navigation & Scrolling ###
         elif key == curses.KEY_LEFT:
             vs['selected_col'] -= 1
             vs['selected_col'] = max(-1, vs['selected_col'])
-            # ### CRITICAL FIX ###
             # The left_most_step must represent a valid step index, so it cannot be negative.
             # We ensure that when the selection moves to the Info column (-1), the scroll position
             # resets to show the first step (index 0).
