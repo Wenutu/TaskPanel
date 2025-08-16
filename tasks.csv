@@ -1,0 +1,11 @@
+Task-A,v1.0.0,./scripts/1_checkout.sh Task-A,./scripts/2_build.sh Task-A,./scripts/3_test.sh Task-A,./scripts/4_deploy.sh Task-A
+Task-B,v1.0.0,./scripts/1_checkout.sh Task-B,./scripts/2_build.sh Task-B,./scripts/3_test.sh Task-B,./scripts/4_deploy.sh Task-B
+Task-C,v1.0.0,./scripts/1_checkout.sh Task-C,./scripts/2_build.sh Task-C,./scripts/3_test.sh Task-C,./scripts/4_deploy.sh Task-C
+Task-D,v1.0.0,./scripts/1_checkout.sh Task-D,./scripts/2_build.sh Task-D,./scripts/3_test.sh Task-D,./scripts/4_deploy.sh Task-D
+Task-E,v1.0.0,./scripts/1_checkout.sh Task-E,./scripts/2_build.sh Task-E,./scripts/3_test.sh Task-E,./scripts/4_deploy.sh Task-E
+Task-F,v1.0.0,./scripts/1_checkout.sh Task-F,./scripts/2_build.sh Task-F,./scripts/3_test.sh Task-F,./scripts/4_deploy.sh Task-F
+Task-G,v1.0.0,./scripts/1_checkout.sh Task-G,./scripts/2_build.sh Task-G,./scripts/3_test.sh Task-G,./scripts/4_deploy.sh Task-G
+Task-H,v1.0.0,./scripts/1_checkout.sh Task-H,./scripts/2_build.sh Task-H,./scripts/3_test.sh Task-H,./scripts/4_deploy.sh Task-H
+Task-I,v1.0.0,./scripts/1_checkout.sh Task-I,./scripts/2_build.sh Task-I,./scripts/3_test.sh Task-I,./scripts/4_deploy.sh Task-I
+Task-J,v1.0.0,./scripts/1_checkout.sh Task-J,./scripts/2_build.sh Task-J,./scripts/3_test.sh Task-J,./scripts/4_deploy.sh Task-J
+Task-K,v2.0.0,./scripts/1_checkout.sh Task-K,./scripts/2_build.sh Task-K,./scripts/3_test.sh Task-K,./scripts/4_deploy.sh Task-K
