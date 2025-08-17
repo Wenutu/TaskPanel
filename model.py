@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-TaskPanel - Model (Production-Ready with Hierarchical Logging)
+TaskPanel - Model (Production-Ready with Separate Log Streams)
 
 This file defines the data structures and core business logic for the task runner.
 It is completely independent of the UI (View) and user input handling (Controller).
@@ -14,8 +14,9 @@ Key Robustness Features:
   the state is automatically invalidated to prevent data inconsistency.
 - Intelligently resumes from state:
   - Tasks that were interrupted are reset from the point of failure, preserving prior SUCCESS steps.
-- Logs stdout/stderr directly to a unique, hierarchical directory structure
-  (`.logs/line<N>_<TaskName>/step<I>.log`) to prevent memory overflow and handle duplicate task names.
+- Logs stdout and stderr to separate, uniquely named files
+  (`.logs/line<N>_<TaskName>/step<I>.stdout.log`) to prevent memory overflow,
+  handle duplicate task names, and allow for colored UI rendering.
 """
 import csv
 import json
@@ -79,7 +80,6 @@ class TaskModel:
                     task_name, info = row[0].strip(), row[1].strip() if len(row) > 1 else ""
                     commands = [cmd for cmd in row[2:] if cmd.strip()]
                     
-                    # Sanitize task name to create a valid directory name
                     safe_name = "".join(c if c.isalnum() else "_" for c in task_name)
                     task_log_dir_name = f"{line_num}_{safe_name}"
                     task_log_path = os.path.join(self.log_dir, task_log_dir_name)
@@ -87,10 +87,12 @@ class TaskModel:
                     
                     steps = []
                     for i, cmd in enumerate(commands):
-                        log_filepath = os.path.join(task_log_path, f"step{i}.log")
+                        # ### MODIFIED: Generate separate log paths for stdout and stderr ###
+                        log_base = os.path.join(task_log_path, f"step{i}")
                         steps.append({"command": cmd, "status": STATUS_PENDING, "process": None,
-                                      "log_path": log_filepath, "start_time": None,
-                                      "debug_log": deque(maxlen=50)})
+                                      "log_path_stdout": f"{log_base}.stdout.log",
+                                      "log_path_stderr": f"{log_base}.stderr.log",
+                                      "start_time": None, "debug_log": deque(maxlen=50)})
                     
                     self.tasks.append({"name": task_name, "info": info, "steps": steps, "run_counter": 0})
             print(f"Loaded {len(self.tasks)} tasks successfully.")
@@ -169,7 +171,7 @@ class TaskModel:
                 os.killpg(pgid, signal.SIGKILL)
 
     def run_task_row(self, task_index, run_counter, start_step_index=0):
-        """Executes the steps for a task, logging output directly to files."""
+        """Executes the steps for a task, logging output directly to separate files."""
         for i in range(start_step_index, len(self.tasks[task_index]["steps"])):
             step = self.tasks[task_index]["steps"][i]
             with self.state_lock:
@@ -181,29 +183,31 @@ class TaskModel:
                     continue
                 step["status"] = STATUS_RUNNING; step["start_time"] = time.time()
                 self._log_debug_unsafe(task_index, i, f"Starting step (run_counter {run_counter}).")
+            
             try:
-                with open(step['log_path'], 'w', encoding='utf-8') as log_file:
-                    popen_kwargs = {"shell": True, "stdout": log_file, "stderr": subprocess.STDOUT, "preexec_fn": os.setsid}
+                # ### MODIFIED: Open two separate log files for stdout and stderr ###
+                with open(step['log_path_stdout'], 'wb') as stdout_log, \
+                     open(step['log_path_stderr'], 'wb') as stderr_log:
+                    
+                    popen_kwargs = {"shell": True, "stdout": stdout_log, "stderr": stderr_log, "preexec_fn": os.setsid}
                     process = subprocess.Popen(step["command"], **popen_kwargs)
+                    
                     with self.state_lock:
                         if self.tasks[task_index]['run_counter'] != run_counter: self._kill_process_group(task_index, i, process); return
                         step["process"] = process
-                        self._log_debug_unsafe(task_index, i, f"Process started with PID: {process.pid}. Log: {step['log_path']}")
+                        self._log_debug_unsafe(task_index, i, f"Process started PID: {process.pid}. STDOUT: {step['log_path_stdout']}, STDERR: {step['log_path_stderr']}")
+                    
                     process.wait()
                 
-                # We need to read back the log to check if it's empty for our success criteria.
-                stderr_content = ""
-                with open(step['log_path'], 'r', encoding='utf-8') as log_file:
-                    full_log = log_file.read()
-                    # A more complex script could prefix stderr with "ERROR:" to allow reliable separation.
-                    # For now, we revert to the most reliable standard: the exit code.
-                    # You can re-add `and not full_log.strip()` to the success condition if needed.
+                # After completion, check if the stderr log file has content.
+                has_stderr_output = os.path.getsize(step['log_path_stderr']) > 0
+                
                 with self.state_lock:
                     if self.tasks[task_index]['run_counter'] != run_counter: return
                     duration = time.time() - step["start_time"] if step.get("start_time") else 0
                     step["start_time"] = None
                     if step["status"] == STATUS_RUNNING:
-                        step["status"] = STATUS_SUCCESS if process.returncode == 0 else STATUS_FAILED
+                        step["status"] = STATUS_SUCCESS if process.returncode == 0 and not has_stderr_output else STATUS_FAILED
                     self._log_debug_unsafe(task_index, i, f"Process finished code {process.returncode}. Status: {step['status']}. Duration: {duration:.2f}s.")
                     if step["status"] != STATUS_SUCCESS:
                         for j in range(i + 1, len(self.tasks[task_index]["steps"])): self.tasks[task_index]["steps"][j]["status"] = STATUS_SKIPPED
@@ -214,8 +218,8 @@ class TaskModel:
                     step["status"] = STATUS_FAILED; step["start_time"] = None
                     self._log_debug_unsafe(task_index, i, f"CRITICAL ERROR: {e}")
                     try:
-                        with open(step['log_path'], 'a', encoding='utf-8') as log_file:
-                            log_file.write(f"\n\n--- TASKPANEL CRITICAL ERROR ---\n{e}\n")
+                        with open(step['log_path_stderr'], 'ab') as stderr_log:
+                            stderr_log.write(f"\n\n--- TASKPANEL CRITICAL ERROR ---\n{str(e)}\n".encode('utf-8'))
                     except IOError: pass
                 break
 
@@ -231,13 +235,14 @@ class TaskModel:
                 if step_to_reset["process"]: self._kill_process_group(task_index, i, step_to_reset["process"])
                 if step_to_reset["status"] == STATUS_RUNNING: step_to_reset["status"] = STATUS_KILLED
                 step_to_reset["status"] = STATUS_PENDING; step_to_reset["start_time"] = None
-                # Clean up old log file for a fresh start
+                
+                # ### MODIFIED: Clean up both log files ###
                 try:
-                    if os.path.exists(step_to_reset['log_path']):
-                        os.remove(step_to_reset['log_path'])
-                        self._log_debug_unsafe(task_index, i, f"Removed old log file: {step_to_reset['log_path']}")
+                    if os.path.exists(step_to_reset['log_path_stdout']): os.remove(step_to_reset['log_path_stdout'])
+                    if os.path.exists(step_to_reset['log_path_stderr']): os.remove(step_to_reset['log_path_stderr'])
+                    self._log_debug_unsafe(task_index, i, f"Removed old log files for step {i}")
                 except OSError as e:
-                     self._log_debug_unsafe(task_index, i, f"Error removing log file: {e}")
+                     self._log_debug_unsafe(task_index, i, f"Error removing log files: {e}")
         executor.submit(self.run_task_row, task_index, new_run_counter, start_step_index)
 
     def kill_task_row(self, task_index):

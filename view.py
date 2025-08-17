@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-TaskPanel - View (Optimized for File-based Logging)
+TaskPanel - View (Optimized for Separate, Colored Log Streams)
 """
 import curses
 import os
@@ -27,16 +27,15 @@ def get_status_color(status):
 
 def read_log_tail(log_path, num_lines=50):
     """Efficiently reads the last N lines from a log file for UI display."""
-    if not os.path.exists(log_path): return ["[Log file not found or not yet created]"]
+    if not os.path.exists(log_path): return []
     try:
         with open(log_path, 'r', encoding='utf-8') as f:
-            # Simple tail implementation, sufficient for UI purposes.
             return f.readlines()[-num_lines:]
     except Exception as e:
         return [f"[Error reading log: {e}]"]
 
 def draw_ui(stdscr, model, view_state):
-    """Draws the entire terminal UI, reading step logs directly from files."""
+    """Draws the entire terminal UI, reading step logs from separate files."""
     stdscr.erase(); h, w = stdscr.getmaxyx()
     if h < 8: stdscr.addstr(0, 0, "Terminal too small."); stdscr.refresh(); return
     
@@ -118,16 +117,28 @@ def draw_ui(stdscr, model, view_state):
                         stdscr.addstr(output_start_y + 1 + idx, 2, line)
                 elif selected_col < len(task["steps"]):
                     step = task["steps"][selected_col]
-                    
-                    stdscr.addstr(output_start_y, 1, f"Log File: {step['log_path']}", curses.A_BOLD)
+                    header_name = model.dynamic_header[selected_col+2] if selected_col+2 < len(model.dynamic_header) else ""
+                    stdscr.addstr(output_start_y, 1, f"Details for: {task['name']} -> {header_name}", curses.A_BOLD)
                     pid_str = f"PID: {step['process'].pid}" if step.get('process') and hasattr(step['process'], 'pid') and step['process'].pid else "PID: N/A"
                     stdscr.addstr(output_start_y, w - len(pid_str) - 1, pid_str)
                     
-                    log_lines = read_log_tail(step['log_path'], num_lines=h-output_start_y-2)
+                    # ### MODIFIED: Read from separate log files and render with color ###
+                    stdout_lines = read_log_tail(step['log_path_stdout'], num_lines=h)
+                    stderr_lines = read_log_tail(step['log_path_stderr'], num_lines=h)
+                    
+                    all_output_lines = []
+                    if stdout_lines:
+                        all_output_lines.append(("[STDOUT]", COLOR_PAIR_OUTPUT_HEADER))
+                        all_output_lines.extend([(line, COLOR_PAIR_DEFAULT) for line in stdout_lines])
+                    if stderr_lines:
+                        all_output_lines.append(("[STDERR]", COLOR_PAIR_FAILED))
+                        all_output_lines.extend([(line, COLOR_PAIR_STDERR) for line in stderr_lines])
+
                     output_content_y = output_start_y + 1
-                    for idx, line in enumerate(log_lines):
+                    for idx, (line, color_key) in enumerate(all_output_lines):
                         if output_content_y + idx >= main_area_h: break
-                        stdscr.addstr(output_content_y + idx, 2, line.rstrip()[:w-3])
+                        attr = curses.color_pair(color_key) | curses.A_BOLD if line.startswith('[') else curses.color_pair(color_key)
+                        stdscr.addstr(output_content_y + idx, 2, line.rstrip()[:w-3], attr)
 
     if debug_panel_active:
         stdscr.hline(main_area_h, 0, curses.ACS_HLINE, w)
@@ -138,13 +149,9 @@ def draw_ui(stdscr, model, view_state):
                     step = task["steps"][selected_col]
                     header = model.dynamic_header[selected_col+2] if selected_col+2 < len(model.dynamic_header) else ""
                     panel_title, log_snapshot = f"Debug Log for {task['name']} -> {header}", list(step["debug_log"])
-                elif selected_col == -1: # Info column selected
-                    panel_title, log_snapshot = f"Debug Log for {task['name']}", ["Info column has no debug log. Select a step to view details."]
-                else: # No valid step selected
-                    panel_title, log_snapshot = "Debug Log (No valid step selected)", []
-            else:
-                panel_title, log_snapshot = "Debug Log (No task selected)", []
-        
+                else:
+                    panel_title, log_snapshot = f"Debug Log for {task['name']}", ["Info column has no debug log."]
+            else: panel_title, log_snapshot = "Debug Log (No task selected)", []
         stdscr.attron(curses.A_BOLD); stdscr.addstr(main_area_h + 1, 1, panel_title); stdscr.attroff(curses.A_BOLD)
         for i, log_entry in enumerate(log_snapshot[-(debug_panel_height-2):]):
             if main_area_h + 2 + i < h: stdscr.addstr(main_area_h + 2 + i, 1, log_entry[:w-2])
