@@ -2,7 +2,7 @@
 LOG_FILE=${@: -1}
 
 echo "==> [$$] Running tests..."
-sleep 30 &
+sleep 3 &
 JOB_ID=$!
 echo "Captured Job ID: $JOB_ID"
 echo "$JOB_ID" >> "$LOG_FILE"

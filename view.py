@@ -2,7 +2,10 @@
 # -*- coding: utf-8 -*-
 
 """
-HPC Task Runner - View (Refined with Debug Panel)
+TaskPanel - View (Production-Ready)
+
+This file handles all the `curses` based UI rendering. It is stateless and
+only knows how to draw the data it is given.
 """
 import curses
 from textwrap import wrap
@@ -12,6 +15,7 @@ from textwrap import wrap
  COLOR_PAIR_OUTPUT_HEADER, COLOR_PAIR_TABLE_HEADER, COLOR_PAIR_KILLED, COLOR_PAIR_STDERR) = range(1, 13)
 
 def setup_colors():
+    """Initializes all color pairs used by the curses UI."""
     curses.start_color(); curses.use_default_colors()
     curses.init_pair(COLOR_PAIR_DEFAULT, curses.COLOR_WHITE, -1); curses.init_pair(COLOR_PAIR_HEADER, curses.COLOR_BLACK, curses.COLOR_WHITE)
     curses.init_pair(COLOR_PAIR_PENDING, curses.COLOR_YELLOW, -1); curses.init_pair(COLOR_PAIR_RUNNING, curses.COLOR_CYAN, -1)
@@ -21,10 +25,12 @@ def setup_colors():
     curses.init_pair(COLOR_PAIR_KILLED, curses.COLOR_MAGENTA, -1); curses.init_pair(COLOR_PAIR_STDERR, curses.COLOR_RED, -1)
 
 def get_status_color(status):
+    """Returns the appropriate curses color pair for a given status string."""
     return curses.color_pair({"PENDING": COLOR_PAIR_PENDING, "RUNNING": COLOR_PAIR_RUNNING, "SUCCESS": COLOR_PAIR_SUCCESS, "FAILED": COLOR_PAIR_FAILED,
                              "SKIPPED": COLOR_PAIR_SKIPPED, "KILLED": COLOR_PAIR_KILLED}.get(status, COLOR_PAIR_DEFAULT))
 
 def draw_ui(stdscr, model, view_state):
+    """Draws the entire terminal UI based on the current model and view state."""
     stdscr.erase(); h, w = stdscr.getmaxyx()
     if h < 8: stdscr.addstr(0, 0, "Terminal too small."); stdscr.refresh(); return
     
@@ -40,31 +46,28 @@ def draw_ui(stdscr, model, view_state):
 
     help_text = "ARROWS/PgUp/PgDn/Home/End: Nav | r: Rerun | k: Kill | d: Debug | q: Quit"
     help_text += warning_message
-    stdscr.attron(curses.color_pair(COLOR_PAIR_HEADER)); stdscr.addstr(0, 0, "HPC Interactive Task Runner".ljust(w)); stdscr.addstr(1, 0, help_text.ljust(w)); stdscr.attroff(curses.color_pair(COLOR_PAIR_HEADER))
+    stdscr.attron(curses.color_pair(COLOR_PAIR_HEADER)); stdscr.addstr(0, 0, "TaskPanel".ljust(w)); stdscr.addstr(1, 0, help_text.ljust(w)); stdscr.attroff(curses.color_pair(COLOR_PAIR_HEADER))
     
     with model.state_lock:
         if not model.tasks:
             if h > 3: stdscr.addstr(3, 1, "No tasks loaded.")
             stdscr.refresh(); return
         
-        max_name_len = max([len(t['name']) for t in model.tasks] + [len(model.dynamic_header[0])]) + 2
+        max_name_len = max([len(t['name']) for t in model.tasks] + [len(model.dynamic_header[0])])
         info_col_width = 20
         step_col_width = max([len(h) for h in model.dynamic_header[2:]] + [12]) + 2 if len(model.dynamic_header) > 2 else 12
         
         header_y, y_start = 3, 4
         
         if header_y < main_area_h:
-            stdscr.attron(curses.color_pair(COLOR_PAIR_TABLE_HEADER))
-            stdscr.addstr(header_y, 1, model.dynamic_header[0].center(max_name_len))
-            stdscr.attroff(curses.color_pair(COLOR_PAIR_TABLE_HEADER))
+            stdscr.attron(curses.color_pair(COLOR_PAIR_TABLE_HEADER)); stdscr.addstr(header_y, 1, model.dynamic_header[0].center(max_name_len)); stdscr.attroff(curses.color_pair(COLOR_PAIR_TABLE_HEADER))
             info_header_x = 1 + max_name_len + 2
             stdscr.attron(curses.color_pair(COLOR_PAIR_TABLE_HEADER)); stdscr.addstr(header_y, info_header_x, model.dynamic_header[1].center(info_col_width)); stdscr.attroff(curses.color_pair(COLOR_PAIR_TABLE_HEADER))
             
-            # Draw headers based on horizontal scroll
             available_width = w - (info_header_x + info_col_width + 3)
             num_visible_steps = max(1, available_width // step_col_width)
             for i in range(left_most_step, min(left_most_step + num_visible_steps, len(model.dynamic_header) - 2)):
-                j = i - left_most_step # On-screen column index
+                j = i - left_most_step
                 col_name = model.dynamic_header[i + 2]
                 start_x = info_header_x + info_col_width + 3 + (j * step_col_width)
                 if start_x + step_col_width < w: stdscr.attron(curses.color_pair(COLOR_PAIR_TABLE_HEADER)); stdscr.addstr(header_y, start_x, col_name.center(step_col_width)); stdscr.attroff(curses.color_pair(COLOR_PAIR_TABLE_HEADER))
@@ -77,21 +80,13 @@ def draw_ui(stdscr, model, view_state):
             if draw_y >= main_area_h: break
             task = model.tasks[i]
             
-            stdscr.addstr(draw_y, 1, task["name"].center(max_name_len), curses.A_REVERSE if i == selected_row else curses.A_NORMAL)
+            stdscr.addstr(draw_y, 1, task["name"].ljust(max_name_len), curses.A_REVERSE if i == selected_row else curses.A_NORMAL)
             
-            # Highlight Info column if selected_col is -1
             info_text_x = 1 + max_name_len + 2
-            full_info_text = task.get('info', '')
-            # NEW: Split info into lines and take the first one
-            info_lines = full_info_text.splitlines()
-            first_line = info_lines[0] if info_lines else ""
-            # Replace newline characters to avoid breaking the layout, just in case
-            first_line = first_line.replace('\n', ' ').replace('\r', '')
-
+            info_text = task.get('info', '')
             info_attr = curses.color_pair(COLOR_PAIR_SELECTED) if (i == selected_row and selected_col == -1) else curses.A_NORMAL
-            stdscr.addstr(draw_y, info_text_x, first_line[:info_col_width-1].ljust(info_col_width), info_attr)
+            stdscr.addstr(draw_y, info_text_x, info_text[:info_col_width-1].ljust(info_col_width), info_attr)
             
-            # Draw step statuses based on horizontal scroll
             for j in range(left_most_step, min(left_most_step + num_visible_steps, len(task["steps"]))):
                 on_screen_col_idx = j - left_most_step
                 step = task["steps"][j]
@@ -100,20 +95,22 @@ def draw_ui(stdscr, model, view_state):
                 if start_x + step_col_width < w: stdscr.addstr(draw_y, start_x, f" {step['status']} ".center(step_col_width), attr)
             last_drawn_y = draw_y
             
-        # --- Draw Output Panel with Context
         output_start_y = last_drawn_y + 2
         if output_start_y < main_area_h:
-            stdscr.hline(output_start_y - 1, 0, curses.ACS_HLINE, w)                
+            stdscr.hline(output_start_y - 1, 0, curses.ACS_HLINE, w)
             if model.tasks and selected_row < len(model.tasks):
                 task = model.tasks[selected_row]
                 if selected_col == -1:
                     stdscr.addstr(output_start_y, 1, f"Full Info for: {task['name']}", curses.A_BOLD)
-                    info_lines = wrap(task.get('info', ''), w - 4) # This was the bug
-                    for idx, line in enumerate(info_lines):
+                    full_info_text = task.get('info', '')
+                    info_lines_final = []
+                    for line in full_info_text.splitlines():
+                        wrapped = wrap(line, w - 4, break_long_words=False, replace_whitespace=False)
+                        info_lines_final.extend(wrapped if wrapped else [''])
+                    for idx, line in enumerate(info_lines_final):
                         if output_start_y + 1 + idx >= main_area_h: break
                         stdscr.addstr(output_start_y + 1 + idx, 2, line)
-
-                elif selected_col < len(task["steps"]): # A step column is selected
+                elif selected_col < len(task["steps"]):
                     step = task["steps"][selected_col]
                     header_name = model.dynamic_header[selected_col+2] if selected_col+2 < len(model.dynamic_header) else ""
                     stdscr.addstr(output_start_y, 1, f"Details for: {task['name']} -> {header_name}", curses.A_BOLD)
@@ -138,9 +135,9 @@ def draw_ui(stdscr, model, view_state):
     if debug_panel_active:
         stdscr.hline(main_area_h, 0, curses.ACS_HLINE, w)
         with model.state_lock:
-            if model.tasks and view_state['selected_row'] < len(model.tasks) and view_state['selected_col'] < len(model.tasks[view_state['selected_row']]["steps"]):
-                step, task = model.tasks[view_state['selected_row']]["steps"][view_state['selected_col']], model.tasks[view_state['selected_row']]
-                header = model.dynamic_header[view_state['selected_col']+2] if view_state['selected_col']+2 < len(model.dynamic_header) else ""
+            if model.tasks and selected_row < len(model.tasks) and selected_col < len(model.tasks[selected_row]["steps"]):
+                step, task = model.tasks[selected_row]["steps"][selected_col], model.tasks[selected_row]
+                header = model.dynamic_header[selected_col+2] if selected_col+2 < len(model.dynamic_header) else ""
                 panel_title, log_snapshot = f"Debug Log for {task['name']} -> {header}", list(step["debug_log"])
             else: panel_title, log_snapshot = "Debug Log (No step selected)", []
         stdscr.attron(curses.A_BOLD); stdscr.addstr(main_area_h + 1, 1, panel_title); stdscr.attroff(curses.A_BOLD)

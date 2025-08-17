@@ -1,6 +1,4 @@
-Task-A,"Version: 1.2.3
-Branch: main
-Owner: Alice",./scripts/1_checkout.sh Task-A,./scripts/2_build.sh Task-A,./scripts/3_test.sh Task-A,./scripts/4_deploy.sh Task-A,./scripts/1_checkout.sh Task-A,./scripts/2_build.sh Task-A,./scripts/3_test.sh Task-A,./scripts/4_deploy.sh Task-A
+Task-A,"Version: 1.2.3 Branch: main Owner: Alice",./scripts/1_checkout.sh Task-A,./scripts/2_build.sh Task-A,./scripts/3_test.sh Task-A,./scripts/4_deploy.sh Task-A,./scripts/1_checkout.sh Task-A,./scripts/2_build.sh Task-A,./scripts/3_test.sh Task-A,./scripts/4_deploy.sh Task-A
 Task-B,v1.0.0,./scripts/1_checkout.sh Task-B,./scripts/2_build.sh Task-B,./scripts/3_test.sh Task-B,./scripts/4_deploy.sh Task-B,./scripts/1_checkout.sh Task-B,./scripts/2_build.sh Task-B,./scripts/3_test.sh Task-B,./scripts/4_deploy.sh Task-B
 Task-C,v1.0.0,./scripts/1_checkout.sh Task-C,./scripts/2_build.sh Task-C,./scripts/3_test.sh Task-C,./scripts/4_deploy.sh Task-C,./scripts/1_checkout.sh Task-C,./scripts/2_build.sh Task-C,./scripts/3_test.sh Task-C,./scripts/4_deploy.sh Task-C
 Task-D,v1.0.0,./scripts/1_checkout.sh Task-D,./scripts/2_build.sh Task-D,./scripts/3_test.sh Task-D,./scripts/4_deploy.sh Task-D,./scripts/1_checkout.sh Task-D,./scripts/2_build.sh Task-D,./scripts/3_test.sh Task-D,./scripts/4_deploy.sh Task-D

@@ -2,18 +2,21 @@
 # -*- coding: utf-8 -*-
 
 """
-HPC Task Runner - Model (Refined & Hardened)
+TaskPanel - Model (Production-Ready)
 
 This file defines the data structures and core business logic for the task runner.
 It is completely independent of the UI (View) and user input handling (Controller).
 This represents the "Model" in a Model-View-Controller (MVC) architecture.
 
-Key Responsibilities:
-- Loading and parsing tasks from a CSV file.
-- Managing the state of each task and step (status, output, timings, etc.).
-- Executing shell commands in subprocesses using a simple and robust `communicate()` model.
-- Handling the logic for killing, rerunning, and cleaning up tasks.
-- Persisting state to a file with SHA256 integrity checks and resuming from it robustly.
+Key Robustness Features:
+- State file is scoped to the input CSV filename for project isolation.
+- State persistence includes a SHA256 hash of the source CSV. If the CSV changes,
+  the state is automatically invalidated to prevent data inconsistency.
+- Intelligently resumes from state:
+  - Tasks that were interrupted (in RUNNING/KILLED state) are reset to PENDING for re-execution.
+  - Tasks that were finished (SUCCESS/FAILED/SKIPPED) have their full state restored.
+- State file saves all serializable step info: status, output, and debug logs,
+  providing a complete snapshot for auditing and post-mortem debugging.
 """
 import csv
 import json
@@ -33,10 +36,11 @@ class TaskModel:
     """Manages all tasks, their states, and the logic for their execution."""
     def __init__(self, csv_path: str):
         self.csv_path = csv_path
-        # State filename is scoped to the input CSV file for project isolation.
         self.state_file_path = f".{os.path.basename(csv_path)}.state.json"
         self.tasks = []
         self.dynamic_header = []
+        # A Re-entrant Lock is used to prevent deadlocks when a thread that already
+        # holds the lock needs to call another function that also acquires the same lock.
         self.state_lock = threading.RLock()
 
     def _log_debug_unsafe(self, task_index, step_index, message):
@@ -50,7 +54,6 @@ class TaskModel:
         sha256 = hashlib.sha256()
         try:
             with open(file_path, 'rb') as f:
-                # Python 3.6 compatible way to read in chunks.
                 while True:
                     chunk = f.read(8192)
                     if not chunk: break
@@ -67,10 +70,14 @@ class TaskModel:
                 reader = csv.reader(f)
                 all_rows = [row for row in reader if row and row[0].strip()]
                 if not all_rows: raise StopIteration
+                
                 longest_row = max(all_rows, key=len)
-                self.dynamic_header = ["TaskName", "Info"] + [cmd.strip().split()[0].split('/')[-1] for cmd in longest_row[2:]]
+                # Handle case where there are no command columns
+                cmd_headers = [cmd.strip().split()[0].split('/')[-1] for cmd in longest_row[2:]] if len(longest_row) > 2 else []
+                self.dynamic_header = ["TaskName", "Info"] + cmd_headers
+                
                 for row in all_rows:
-                    if len(row) < 2: continue # Skip rows that don't even have a name and info
+                    if len(row) < 1: continue
                     task_name = row[0].strip()
                     info = row[1].strip() if len(row) > 1 else ""
                     commands = [cmd for cmd in row[2:] if cmd.strip()]
@@ -78,13 +85,13 @@ class TaskModel:
                               "output": {"stdout": "", "stderr": ""}, "start_time": None,
                               "debug_log": deque(maxlen=50)} for cmd in commands]
                     self.tasks.append({"name": task_name, "info": info, "steps": steps, "run_counter": 0})
-            print("Tasks loaded successfully.")
+            print(f"Loaded {len(self.tasks)} tasks successfully.")
             self._resume_state()
         except Exception as e:
             print(f"FATAL: Error loading tasks from '{self.csv_path}': {e}"); sys.exit(1)
 
     def _resume_state(self):
-        """If a state file exists and matches the CSV hash, load it."""
+        """If a state file exists and matches the CSV hash, load it intelligently."""
         if not os.path.exists(self.state_file_path):
             print("No state file found. Starting fresh.")
             return
@@ -94,7 +101,7 @@ class TaskModel:
             current_hash = self._calculate_hash(self.csv_path)
             saved_hash = saved_data.get("source_csv_sha256")
             if current_hash != saved_hash:
-                print(f"Warning: '{self.csv_path}' has changed since the last run. Discarding old state.")
+                print(f"Warning: '{self.csv_path}' has changed. Discarding old state.")
                 os.remove(self.state_file_path)
                 return
             print("Integrity check passed. Resuming state.")
@@ -104,46 +111,29 @@ class TaskModel:
                     task_name = task_state.get('name')
                     if task_name in task_map:
                         task = task_map[task_name]
-                        was_interrupted = any(
-                            s.get('status') in [STATUS_RUNNING, STATUS_KILLED]
-                            for s in task_state.get('steps', [])
-                        )
-
+                        saved_steps = task_state.get('steps', [])
+                        was_interrupted = any(s.get('status') in [STATUS_RUNNING, STATUS_KILLED] for s in saved_steps)
                         if was_interrupted:
                             print(f"  - Task '{task_name}' was interrupted. Resetting to PENDING for re-execution.")
-                            for step in task['steps']:
-                                step['status'] = STATUS_PENDING
+                            for step in task['steps']: step['status'] = STATUS_PENDING
                         else:
                             task['info'] = task_state.get('info', task['info'])
-                            for i, saved_step in enumerate(task_state.get('steps', [])):
+                            for i, saved_step in enumerate(saved_steps):
                                 if i < len(task['steps']):
-                                    status = saved_step.get('status', STATUS_PENDING)
-                                    if status not in [STATUS_RUNNING, STATUS_KILLED]:
-                                        task['steps'][i]['status'] = saved_step.get('status', STATUS_PENDING)
-                                        task['steps'][i]['output'] = saved_step.get('output', {"stdout": "", "stderr": ""})
-                                        task['steps'][i]['debug_log'] = deque(saved_step.get('debug_log', []), maxlen=50)
+                                    task['steps'][i]['status'] = saved_step.get('status', STATUS_PENDING)
+                                    task['steps'][i]['output'] = saved_step.get('output', {"stdout": "", "stderr": ""})
+                                    task['steps'][i]['debug_log'] = deque(saved_step.get('debug_log', []), maxlen=50)
         except (json.JSONDecodeError, IOError, KeyError) as e:
             print(f"Warning: Could not read or parse state file '{self.state_file_path}'. Starting fresh. Error: {e}")
 
     def persist_state(self):
-        """Saves the current state of all tasks and the CSV hash to a file."""
+        """Saves a complete snapshot of all tasks and the CSV hash."""
         print("\nPersisting state...")
         state_to_save = []
         with self.state_lock:
             for task in self.tasks:
-                steps_data = []
-                for s in task['steps']:
-                    steps_data.append({
-                        "command": s['command'],
-                        "status": s['status'],
-                        "output": s['output'],
-                        "debug_log": list(s['debug_log']) # Convert deque to list for JSON
-                    })
-                task_data = {
-                    "name": task['name'],
-                    "info": task['info'],
-                    "steps": steps_data
-                }
+                steps_data = [{"status": s['status'], "output": s['output'], "debug_log": list(s['debug_log'])} for s in task['steps']]
+                task_data = {"name": task['name'], "info": task.get('info', ''), "steps": steps_data}
                 state_to_save.append(task_data)
         final_data = {"source_csv_sha256": self._calculate_hash(self.csv_path), "tasks": state_to_save}
         try:
@@ -153,6 +143,7 @@ class TaskModel:
             print(f"\nError: Could not write state to file '{self.state_file_path}'. Error: {e}")
 
     def _kill_process_group(self, task_index, step_index, process):
+        """Safely terminates a process and its entire process group."""
         if process and process.poll() is None:
             try:
                 pgid = os.getpgid(process.pid)
@@ -165,7 +156,11 @@ class TaskModel:
                 os.killpg(pgid, signal.SIGKILL)
 
     def run_task_row(self, task_index, run_counter, start_step_index=0):
-        """A simplified and robust function to execute steps for a task."""
+        """
+        Executes the steps for a task. This is the main function for worker threads.
+        It uses a `run_counter` to ensure that only the latest command (e.g., from a
+        rerun) is authoritative, preventing race conditions.
+        """
         for i in range(start_step_index, len(self.tasks[task_index]["steps"])):
             step = self.tasks[task_index]["steps"][i]
             with self.state_lock:
@@ -207,9 +202,9 @@ class TaskModel:
                 break
 
     def rerun_task_from_step(self, executor, task_index, start_step_index):
+        """Handles 'rerun' by invalidating the old run and submitting a new one to the executor."""
         with self.state_lock:
             task = self.tasks[task_index]
-            self._log_debug_unsafe(task_index, start_step_index, "RERUN triggered.")
             task['run_counter'] += 1
             new_run_counter = task['run_counter']
             self._log_debug_unsafe(task_index, start_step_index, f"New run_counter is {new_run_counter}.")
@@ -222,9 +217,9 @@ class TaskModel:
         executor.submit(self.run_task_row, task_index, new_run_counter, start_step_index)
 
     def kill_task_row(self, task_index):
+        """Terminates an entire task row by invalidating its run_counter and killing its process."""
         with self.state_lock:
             task = self.tasks[task_index]
-            self._log_debug_unsafe(task_index, 0, "KILL TASK triggered.")
             task['run_counter'] += 1
             kill_point_found = False
             for i, step in enumerate(task["steps"]):
@@ -237,6 +232,7 @@ class TaskModel:
                 elif step["status"] == STATUS_PENDING and kill_point_found: step["status"] = STATUS_SKIPPED
 
     def cleanup(self):
+        """Prepares for a clean shutdown by invalidating all runs and saving state."""
         with self.state_lock:
             for task_index, task in enumerate(self.tasks):
                 task['run_counter'] += 1
