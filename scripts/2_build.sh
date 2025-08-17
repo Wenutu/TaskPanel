@@ -4,6 +4,10 @@ LOG_FILE=${@: -1}
 
 echo "==> [$$] Starting build for task $TASK_NAME..."
 # Simulate two bsub jobs in this step
+for i in {1..30}; do
+    # test long output
+    echo "Building... $i/30"
+done
 for i in {1..2}; do
     echo "Submitting build job $i..."
     sleep 2 &

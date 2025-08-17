@@ -28,6 +28,7 @@ import threading
 import time
 import hashlib
 from collections import deque
+import shlex
 
 STATUS_PENDING, STATUS_RUNNING, STATUS_SUCCESS, STATUS_FAILED, STATUS_SKIPPED, STATUS_KILLED = \
     "PENDING", "RUNNING", "SUCCESS", "FAILED", "SKIPPED", "KILLED"
@@ -87,14 +88,14 @@ class TaskModel:
                     
                     steps = []
                     for i, cmd in enumerate(commands):
-                        # ### MODIFIED: Generate separate log paths for stdout and stderr ###
                         log_base = os.path.join(task_log_path, f"step{i}")
                         steps.append({"command": cmd, "status": STATUS_PENDING, "process": None,
                                       "log_path_stdout": f"{log_base}.stdout.log",
                                       "log_path_stderr": f"{log_base}.stderr.log",
                                       "start_time": None, "debug_log": deque(maxlen=50)})
                     
-                    self.tasks.append({"name": task_name, "info": info, "steps": steps, "run_counter": 0})
+                    # This is critical for reliable state resumption when task names are not unique.
+                    self.tasks.append({"id": line_num, "name": task_name, "info": info, "steps": steps, "run_counter": 0})
             print(f"Loaded {len(self.tasks)} tasks successfully.")
             self._resume_state()
         except Exception as e:
@@ -116,18 +117,23 @@ class TaskModel:
                 return
             print("Integrity check passed. Resuming state.")
             with self.state_lock:
-                task_map = {task['name']: task for task in self.tasks}
+                # ### FIX: Use the unique 'id' for mapping, not the potentially non-unique 'name'.
+                task_map = {task['id']: task for task in self.tasks}
                 for task_state in saved_data.get("tasks", []):
-                    task_name = task_state.get('name')
-                    if task_name in task_map:
-                        task = task_map[task_name]
+                    task_id = task_state.get('id')
+                    if task_id in task_map:
+                        task = task_map[task_id]
+                        # Also check if the name matches to prevent weird state merges if the CSV is drastically edited.
+                        if task['name'] != task_state.get('name'):
+                             print(f"  - Warning: Skipping state for task ID {task_id}, name has changed from '{task_state.get('name')}' to '{task['name']}'.")
+                             continue
                         saved_steps = task_state.get('steps', [])
                         interrupted_at = -1
                         for i, s in enumerate(saved_steps):
                             if s.get('status') in [STATUS_RUNNING, STATUS_KILLED]:
                                 interrupted_at = i; break
                         if interrupted_at != -1:
-                            print(f"  - Task '{task_name}' was interrupted. Resuming from step {interrupted_at}.")
+                            print(f"  - Task '{task['name']}' (ID: {task_id}) was interrupted. Resuming from step {interrupted_at}.")
                             for i in range(interrupted_at):
                                 if i < len(task['steps']) and i < len(saved_steps):
                                     task['steps'][i]['status'] = saved_steps[i].get('status', STATUS_PENDING)
@@ -142,20 +148,29 @@ class TaskModel:
             print(f"Warning: Could not read or parse state file '{self.state_file_path}'. Starting fresh. Error: {e}")
 
     def persist_state(self):
-        """Saves a minimal state of all tasks and the CSV hash."""
+        """Saves a minimal state of all tasks and the CSV hash using an atomic write."""
         print("\nPersisting state...")
         state_to_save = []
         with self.state_lock:
             for task in self.tasks:
-                task_data = {"name": task['name'], "info": task.get('info', ''),
+                # ### FIX: Include the unique 'id' in the persisted state.
+                task_data = {"id": task['id'], "name": task['name'], "info": task.get('info', ''),
                              "steps": [{"status": s['status']} for s in task['steps']]}
                 state_to_save.append(task_data)
         final_data = {"source_csv_sha256": self._calculate_hash(self.csv_path), "tasks": state_to_save}
+        
+        # First, write to a temporary file. If successful, then rename it to the final destination.
+        # The rename operation is atomic on POSIX systems.
+        temp_file_path = self.state_file_path + ".tmp"
         try:
-            with open(self.state_file_path, 'w') as f: json.dump(final_data, f, indent=2)
+            with open(temp_file_path, 'w') as f:
+                json.dump(final_data, f, indent=2)
+            os.rename(temp_file_path, self.state_file_path)
             print(f"State saved to {self.state_file_path}")
-        except IOError as e:
+        except (IOError, OSError) as e:
             print(f"\nError: Could not write state to file '{self.state_file_path}'. Error: {e}")
+            if os.path.exists(temp_file_path):
+                os.remove(temp_file_path)
 
     def _kill_process_group(self, task_index, step_index, process):
         """Safely terminates a process and its entire process group."""
@@ -185,12 +200,14 @@ class TaskModel:
                 self._log_debug_unsafe(task_index, i, f"Starting step (run_counter {run_counter}).")
             
             try:
-                # ### MODIFIED: Open two separate log files for stdout and stderr ###
                 with open(step['log_path_stdout'], 'wb') as stdout_log, \
                      open(step['log_path_stderr'], 'wb') as stderr_log:
                     
-                    popen_kwargs = {"shell": True, "stdout": stdout_log, "stderr": stderr_log, "preexec_fn": os.setsid}
-                    process = subprocess.Popen(step["command"], **popen_kwargs)
+                    # ### FIX: SECURITY - Remove `shell=True` and parse command with shlex.
+                    # This prevents command injection vulnerabilities and is the standard safe practice.
+                    cmd_list = shlex.split(step["command"])
+                    popen_kwargs = {"stdout": stdout_log, "stderr": stderr_log, "preexec_fn": os.setsid}
+                    process = subprocess.Popen(cmd_list, **popen_kwargs)
                     
                     with self.state_lock:
                         if self.tasks[task_index]['run_counter'] != run_counter: self._kill_process_group(task_index, i, process); return
@@ -199,15 +216,15 @@ class TaskModel:
                     
                     process.wait()
                 
-                # After completion, check if the stderr log file has content.
-                has_stderr_output = os.path.getsize(step['log_path_stderr']) > 0
-                
                 with self.state_lock:
                     if self.tasks[task_index]['run_counter'] != run_counter: return
                     duration = time.time() - step["start_time"] if step.get("start_time") else 0
                     step["start_time"] = None
                     if step["status"] == STATUS_RUNNING:
-                        step["status"] = STATUS_SUCCESS if process.returncode == 0 and not has_stderr_output else STATUS_FAILED
+                        # ### FIX: Status is determined by return code ONLY.
+                        # The presence of stderr output does not automatically mean failure.
+                        # This aligns with standard CLI tool behavior (e.g., git, rsync progress).
+                        step["status"] = STATUS_SUCCESS if process.returncode == 0 else STATUS_FAILED
                     self._log_debug_unsafe(task_index, i, f"Process finished code {process.returncode}. Status: {step['status']}. Duration: {duration:.2f}s.")
                     if step["status"] != STATUS_SUCCESS:
                         for j in range(i + 1, len(self.tasks[task_index]["steps"])): self.tasks[task_index]["steps"][j]["status"] = STATUS_SKIPPED
@@ -220,7 +237,9 @@ class TaskModel:
                     try:
                         with open(step['log_path_stderr'], 'ab') as stderr_log:
                             stderr_log.write(f"\n\n--- TASKPANEL CRITICAL ERROR ---\n{str(e)}\n".encode('utf-8'))
-                    except IOError: pass
+                    except IOError as io_err:
+                        # ### FIX: Avoid silent 'pass'. If logging the error fails, print to console.
+                        print(f"FATAL: Could not write critical error to log file {step['log_path_stderr']}: {io_err}", file=sys.stderr)
                 break
 
     def rerun_task_from_step(self, executor, task_index, start_step_index):
@@ -236,7 +255,6 @@ class TaskModel:
                 if step_to_reset["status"] == STATUS_RUNNING: step_to_reset["status"] = STATUS_KILLED
                 step_to_reset["status"] = STATUS_PENDING; step_to_reset["start_time"] = None
                 
-                # ### MODIFIED: Clean up both log files ###
                 try:
                     if os.path.exists(step_to_reset['log_path_stdout']): os.remove(step_to_reset['log_path_stdout'])
                     if os.path.exists(step_to_reset['log_path_stderr']): os.remove(step_to_reset['log_path_stderr'])

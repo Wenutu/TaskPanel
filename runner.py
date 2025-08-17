@@ -12,7 +12,7 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor
 
 from model import TaskModel, STATUS_FAILED, STATUS_RUNNING, STATUS_PENDING, STATUS_SUCCESS
-from view import setup_colors, draw_ui
+from view import setup_colors, draw_ui, calculate_layout_dimensions
 
 class AppController:
     """Manages the application's main loop, user input, and state transitions."""
@@ -21,7 +21,15 @@ class AppController:
         self.model = TaskModel(csv_path)
         self.app_running = True
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
-        self.view_state = {'top_row': 0, 'selected_row': 0, 'selected_col': 0, 'debug_panel_visible': False, 'left_most_step': 0}
+        self.view_state = {
+            'top_row': 0, 
+            'selected_row': 0, 
+            'selected_col': 0, 
+            'debug_panel_visible': False, 
+            'left_most_step': 0, 
+            'log_scroll_offset': 0,
+            'debug_scroll_offset': 0 
+        }
         self.ui_dirty = True
         curses.curs_set(0); stdscr.nodelay(1); setup_colors()
         self.model.load_tasks_from_csv()
@@ -41,28 +49,63 @@ class AppController:
                     task['run_counter'] += 1
                     current_run_counter = task['run_counter']
                     self.executor.submit(self.model.run_task_row, i, current_run_counter, first_step_to_run)
+    
+    def _reset_scroll_states(self):
+        """Helper to reset all scroll offsets when selection changes."""
+        self.view_state['log_scroll_offset'] = 0
+        self.view_state['debug_scroll_offset'] = 0
 
     def handle_input(self):
         """Processes a single key press, including enhanced navigation."""
         try: key = self.stdscr.getch()
         except curses.error: key = -1
+
+        if key == curses.KEY_RESIZE:
+            self.ui_dirty = True
+            return
+
         if key == -1: return
         
         self.ui_dirty = True
         vs = self.view_state
-        h, w = self.stdscr.getmaxyx(); task_list_h = h - 9
+        h, w = self.stdscr.getmaxyx()
         
+        # ### FIX: Get ALL layout dimensions, including the crucial task_list_h,
+        # ### from the single source of truth in view.py.
+        # This ensures the controller's scrolling logic uses the exact same geometry as the view's drawing logic.
+        _, _, _, num_visible_steps, task_list_h = \
+            calculate_layout_dimensions(w, self.model, h, vs['debug_panel_visible'])
+        
+        # Navigation and Action keys
         if key == ord('d'): vs['debug_panel_visible'] = not vs['debug_panel_visible']
         elif key == ord('q'): self.app_running = False
-        elif key == curses.KEY_UP: vs['selected_row'] = max(0, vs['selected_row'] - 1); vs['top_row'] = min(vs['top_row'], vs['selected_row'])
-        elif key == curses.KEY_DOWN: vs['selected_row'] = min(len(self.model.tasks) - 1, vs['selected_row'] + 1); vs['top_row'] = max(vs['top_row'], vs['selected_row'] - task_list_h + 1)
-        elif key == curses.KEY_HOME: vs['selected_row'], vs['top_row'] = 0, 0
-        elif key == curses.KEY_END: vs['selected_row'] = len(self.model.tasks) - 1; vs['top_row'] = max(0, vs['selected_row'] - task_list_h + 1)
-        elif key == curses.KEY_PPAGE: vs['selected_row'] = max(0, vs['selected_row'] - task_list_h); vs['top_row'] = max(0, vs['top_row'] - task_list_h)
-        elif key == curses.KEY_NPAGE: vs['selected_row'] = min(len(self.model.tasks) - 1, vs['selected_row'] + task_list_h); vs['top_row'] = min(max(0, len(self.model.tasks) - task_list_h), vs['top_row'] + task_list_h)
+        elif key == curses.KEY_UP: 
+            vs['selected_row'] = max(0, vs['selected_row'] - 1)
+            vs['top_row'] = min(vs['top_row'], vs['selected_row'])
+            self._reset_scroll_states()
+        elif key == curses.KEY_DOWN: 
+            vs['selected_row'] = min(len(self.model.tasks) - 1, vs['selected_row'] + 1)
+            vs['top_row'] = max(vs['top_row'], vs['selected_row'] - task_list_h + 1)
+            self._reset_scroll_states()
+        elif key == curses.KEY_HOME: 
+            vs['selected_row'], vs['top_row'] = 0, 0
+            self._reset_scroll_states()
+        elif key == curses.KEY_END: 
+            vs['selected_row'] = len(self.model.tasks) - 1
+            vs['top_row'] = max(0, vs['selected_row'] - task_list_h + 1)
+            self._reset_scroll_states()
+        elif key == curses.KEY_PPAGE: 
+            vs['selected_row'] = max(0, vs['selected_row'] - task_list_h)
+            vs['top_row'] = max(0, vs['top_row'] - task_list_h)
+            self._reset_scroll_states()
+        elif key == curses.KEY_NPAGE: 
+            vs['selected_row'] = min(len(self.model.tasks) - 1, vs['selected_row'] + task_list_h)
+            vs['top_row'] = min(max(0, len(self.model.tasks) - task_list_h), vs['top_row'] + task_list_h)
+            self._reset_scroll_states()
         elif key == curses.KEY_LEFT:
             vs['selected_col'] = max(-1, vs['selected_col'] - 1)
             if vs['selected_col'] < vs['left_most_step']: vs['left_most_step'] = max(0, vs['selected_col'])
+            self._reset_scroll_states()
         elif key == curses.KEY_RIGHT:
             with self.model.state_lock:
                 if self.model.tasks and vs['selected_row'] < len(self.model.tasks):
@@ -70,24 +113,28 @@ class AppController:
                     if steps:
                         max_col = len(steps) - 1
                         vs['selected_col'] = min(max_col, vs['selected_col'] + 1)
-                        max_name_len = max([len(t['name']) for t in self.model.tasks] + [len(self.model.dynamic_header[0])])
-                        info_col_width, step_col_width = 20, max([len(h) for h in self.model.dynamic_header[2:]] + [12]) + 2 if len(self.model.dynamic_header) > 2 else 12
-                        available_width = w - (max_name_len + 3) - (info_col_width + 3)
-                        num_visible_steps = max(1, available_width // step_col_width)
                         if vs['selected_col'] >= vs['left_most_step'] + num_visible_steps:
                             vs['left_most_step'] = vs['selected_col'] - num_visible_steps + 1
+            self._reset_scroll_states()
+        
+        # Log Panel Scrolling
+        elif key == ord('['): vs['log_scroll_offset'] = max(0, vs['log_scroll_offset'] - 1)
+        elif key == ord(']'): vs['log_scroll_offset'] += 1
+
+        # Debug Panel Scrolling
+        elif key == ord('{'): vs['debug_scroll_offset'] = max(0, vs['debug_scroll_offset'] - 1)
+        elif key == ord('}'): vs['debug_scroll_offset'] += 1
+
+        # Task Actions
         elif key == ord('r'):
             if vs['selected_col'] >= 0:
                 with self.model.state_lock:
                     if self.model.tasks and vs['selected_row'] < len(self.model.tasks) and vs['selected_col'] < len(self.model.tasks[vs['selected_row']]["steps"]):
-                        # Even if the action is on a step, the log provides context.
                         self.model._log_debug_unsafe(vs['selected_row'], vs['selected_col'], "'r' key pressed by user.")
                         self.model.rerun_task_from_step(self.executor, vs['selected_row'], vs['selected_col'])
         elif key == ord('k'):
             if self.model.tasks and vs['selected_row'] < len(self.model.tasks):
                 with self.model.state_lock:
-                    # A task-level action's log is best placed at the start of its steps.
-                    # We ensure there are steps to log to, otherwise we don't log.
                     if self.model.tasks[vs['selected_row']]['steps']:
                         self.model._log_debug_unsafe(vs['selected_row'], 0, "'k' key pressed for this task.")
                     self.model.kill_task_row(vs['selected_row'])
@@ -116,11 +163,19 @@ class AppController:
 
 def run(csv_path: str, max_workers: int):
     """Main entry point for running the TaskPanel application."""
+    app_controller = None
     try:
-        curses.wrapper(lambda stdscr: AppController(stdscr, csv_path, max_workers).run_loop())
+        def main_wrapper(stdscr):
+            nonlocal app_controller
+            app_controller = AppController(stdscr, csv_path, max_workers)
+            app_controller.run_loop()
+        curses.wrapper(main_wrapper)
     except KeyboardInterrupt:
         print("\nInterrupted by user (Ctrl+C). Saving state and exiting.")
-        TaskModel(csv_path).cleanup()
+        if app_controller:
+            app_controller.model.cleanup()
+        else: 
+            TaskModel(csv_path).persist_state()
         print("Cleanup complete.")
     except Exception:
         import traceback
