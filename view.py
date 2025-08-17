@@ -2,12 +2,10 @@
 # -*- coding: utf-8 -*-
 
 """
-TaskPanel - View (Production-Ready)
-
-This file handles all the `curses` based UI rendering. It is stateless and
-only knows how to draw the data it is given.
+TaskPanel - View (Optimized for File-based Logging)
 """
 import curses
+import os
 from textwrap import wrap
 
 (COLOR_PAIR_DEFAULT, COLOR_PAIR_HEADER, COLOR_PAIR_PENDING, COLOR_PAIR_RUNNING,
@@ -15,7 +13,6 @@ from textwrap import wrap
  COLOR_PAIR_OUTPUT_HEADER, COLOR_PAIR_TABLE_HEADER, COLOR_PAIR_KILLED, COLOR_PAIR_STDERR) = range(1, 13)
 
 def setup_colors():
-    """Initializes all color pairs used by the curses UI."""
     curses.start_color(); curses.use_default_colors()
     curses.init_pair(COLOR_PAIR_DEFAULT, curses.COLOR_WHITE, -1); curses.init_pair(COLOR_PAIR_HEADER, curses.COLOR_BLACK, curses.COLOR_WHITE)
     curses.init_pair(COLOR_PAIR_PENDING, curses.COLOR_YELLOW, -1); curses.init_pair(COLOR_PAIR_RUNNING, curses.COLOR_CYAN, -1)
@@ -25,12 +22,21 @@ def setup_colors():
     curses.init_pair(COLOR_PAIR_KILLED, curses.COLOR_MAGENTA, -1); curses.init_pair(COLOR_PAIR_STDERR, curses.COLOR_RED, -1)
 
 def get_status_color(status):
-    """Returns the appropriate curses color pair for a given status string."""
     return curses.color_pair({"PENDING": COLOR_PAIR_PENDING, "RUNNING": COLOR_PAIR_RUNNING, "SUCCESS": COLOR_PAIR_SUCCESS, "FAILED": COLOR_PAIR_FAILED,
                              "SKIPPED": COLOR_PAIR_SKIPPED, "KILLED": COLOR_PAIR_KILLED}.get(status, COLOR_PAIR_DEFAULT))
 
+def read_log_tail(log_path, num_lines=50):
+    """Efficiently reads the last N lines from a log file for UI display."""
+    if not os.path.exists(log_path): return ["[Log file not found or not yet created]"]
+    try:
+        with open(log_path, 'r', encoding='utf-8') as f:
+            # Simple tail implementation, sufficient for UI purposes.
+            return f.readlines()[-num_lines:]
+    except Exception as e:
+        return [f"[Error reading log: {e}]"]
+
 def draw_ui(stdscr, model, view_state):
-    """Draws the entire terminal UI based on the current model and view state."""
+    """Draws the entire terminal UI, reading step logs directly from files."""
     stdscr.erase(); h, w = stdscr.getmaxyx()
     if h < 8: stdscr.addstr(0, 0, "Terminal too small."); stdscr.refresh(); return
     
@@ -112,34 +118,33 @@ def draw_ui(stdscr, model, view_state):
                         stdscr.addstr(output_start_y + 1 + idx, 2, line)
                 elif selected_col < len(task["steps"]):
                     step = task["steps"][selected_col]
-                    header_name = model.dynamic_header[selected_col+2] if selected_col+2 < len(model.dynamic_header) else ""
-                    stdscr.addstr(output_start_y, 1, f"Details for: {task['name']} -> {header_name}", curses.A_BOLD)
+                    
+                    stdscr.addstr(output_start_y, 1, f"Log File: {step['log_path']}", curses.A_BOLD)
                     pid_str = f"PID: {step['process'].pid}" if step.get('process') and hasattr(step['process'], 'pid') and step['process'].pid else "PID: N/A"
                     stdscr.addstr(output_start_y, w - len(pid_str) - 1, pid_str)
                     
-                    output = step.get('output', {}); stdout_content = output.get('stdout', '').strip(); stderr_content = output.get('stderr', '').strip()
-                    all_output_lines = []
-                    if stdout_content:
-                        all_output_lines.append(("[STDOUT]", COLOR_PAIR_OUTPUT_HEADER))
-                        for line in stdout_content.splitlines(): all_output_lines.append((line, COLOR_PAIR_DEFAULT))
-                    if stderr_content:
-                        all_output_lines.append(("[STDERR]", COLOR_PAIR_FAILED))
-                        for line in stderr_content.splitlines(): all_output_lines.append((line, COLOR_PAIR_STDERR))
-                    
+                    log_lines = read_log_tail(step['log_path'], num_lines=h-output_start_y-2)
                     output_content_y = output_start_y + 1
-                    for idx, (line, color_key) in enumerate(all_output_lines):
+                    for idx, line in enumerate(log_lines):
                         if output_content_y + idx >= main_area_h: break
-                        attr = curses.color_pair(color_key) | curses.A_BOLD if line.startswith('[') else curses.color_pair(color_key)
-                        stdscr.addstr(output_content_y + idx, 2, line[:w-3], attr)
+                        stdscr.addstr(output_content_y + idx, 2, line.rstrip()[:w-3])
 
     if debug_panel_active:
         stdscr.hline(main_area_h, 0, curses.ACS_HLINE, w)
         with model.state_lock:
-            if model.tasks and selected_row < len(model.tasks) and selected_col < len(model.tasks[selected_row]["steps"]):
-                step, task = model.tasks[selected_row]["steps"][selected_col], model.tasks[selected_row]
-                header = model.dynamic_header[selected_col+2] if selected_col+2 < len(model.dynamic_header) else ""
-                panel_title, log_snapshot = f"Debug Log for {task['name']} -> {header}", list(step["debug_log"])
-            else: panel_title, log_snapshot = "Debug Log (No step selected)", []
+            if model.tasks and selected_row < len(model.tasks):
+                task = model.tasks[selected_row]
+                if selected_col >= 0 and selected_col < len(task["steps"]):
+                    step = task["steps"][selected_col]
+                    header = model.dynamic_header[selected_col+2] if selected_col+2 < len(model.dynamic_header) else ""
+                    panel_title, log_snapshot = f"Debug Log for {task['name']} -> {header}", list(step["debug_log"])
+                elif selected_col == -1: # Info column selected
+                    panel_title, log_snapshot = f"Debug Log for {task['name']}", ["Info column has no debug log. Select a step to view details."]
+                else: # No valid step selected
+                    panel_title, log_snapshot = "Debug Log (No valid step selected)", []
+            else:
+                panel_title, log_snapshot = "Debug Log (No task selected)", []
+        
         stdscr.attron(curses.A_BOLD); stdscr.addstr(main_area_h + 1, 1, panel_title); stdscr.attroff(curses.A_BOLD)
         for i, log_entry in enumerate(log_snapshot[-(debug_panel_height-2):]):
             if main_area_h + 2 + i < h: stdscr.addstr(main_area_h + 2 + i, 1, log_entry[:w-2])

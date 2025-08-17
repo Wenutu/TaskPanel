@@ -6,7 +6,6 @@ echo "==> [$$] Starting checkout..."
 sleep 5 & # Run in background to get a PID
 JOB_ID=$!
 echo "Captured Job ID: $JOB_ID"
-echo "$JOB_ID" >> "$LOG_FILE"
 wait $JOB_ID # Wait for it to finish
 echo "==> Checkout complete."
 exit 0

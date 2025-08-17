@@ -9,7 +9,6 @@ for i in {1..2}; do
     sleep 2 &
     JOB_ID=$!
     echo "Captured Job ID: $JOB_ID"
-    echo "$JOB_ID" >> "$LOG_FILE"
     wait $JOB_ID
 done
 

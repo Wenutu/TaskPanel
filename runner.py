@@ -2,10 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-TaskPanel - Controller (Production-Ready)
-
-This is the main entry point for the application. It initializes the Model and View,
-and runs the main event loop, handling user input.
+TaskPanel - Controller (Production-Ready with Smart Refresh)
 """
 import curses
 import os
@@ -14,7 +11,7 @@ import time
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 
-from model import TaskModel, STATUS_FAILED, STATUS_RUNNING
+from model import TaskModel, STATUS_FAILED, STATUS_RUNNING, STATUS_PENDING, STATUS_SUCCESS
 from view import setup_colors, draw_ui
 
 class AppController:
@@ -25,26 +22,33 @@ class AppController:
         self.app_running = True
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
         self.view_state = {'top_row': 0, 'selected_row': 0, 'selected_col': 0, 'debug_panel_visible': False, 'left_most_step': 0}
+        self.ui_dirty = True
         curses.curs_set(0); stdscr.nodelay(1); setup_colors()
         self.model.load_tasks_from_csv()
 
     def start_initial_tasks(self):
-        """Submits all initially PENDING tasks to the thread pool."""
-        print(f"Submitting initial tasks to a pool of {self.executor._max_workers} worker(s)...")
+        """Submits tasks that need to be run to the thread pool."""
+        print(f"Submitting tasks to a pool of {self.executor._max_workers} worker(s)...")
         for i in range(len(self.model.tasks)):
             with self.model.state_lock:
                 task = self.model.tasks[i]
-                if task['steps'] and task['steps'][0]['status'] == 'PENDING':
+                first_step_to_run = -1
+                for j, step in enumerate(task['steps']):
+                    if step['status'] != STATUS_SUCCESS:
+                        first_step_to_run = j
+                        break
+                if first_step_to_run != -1:
                     task['run_counter'] += 1
                     current_run_counter = task['run_counter']
-                    self.executor.submit(self.model.run_task_row, i, current_run_counter)
+                    self.executor.submit(self.model.run_task_row, i, current_run_counter, first_step_to_run)
 
     def handle_input(self):
         """Processes a single key press, including enhanced navigation."""
         try: key = self.stdscr.getch()
         except curses.error: key = -1
         if key == -1: return
-
+        
+        self.ui_dirty = True
         vs = self.view_state
         h, w = self.stdscr.getmaxyx(); task_list_h = h - 9
         
@@ -76,22 +80,34 @@ class AppController:
             if vs['selected_col'] >= 0:
                 with self.model.state_lock:
                     if self.model.tasks and vs['selected_row'] < len(self.model.tasks) and vs['selected_col'] < len(self.model.tasks[vs['selected_row']]["steps"]):
+                        # Even if the action is on a step, the log provides context.
                         self.model._log_debug_unsafe(vs['selected_row'], vs['selected_col'], "'r' key pressed by user.")
                         self.model.rerun_task_from_step(self.executor, vs['selected_row'], vs['selected_col'])
         elif key == ord('k'):
             if self.model.tasks and vs['selected_row'] < len(self.model.tasks):
                 with self.model.state_lock:
-                    self.model._log_debug_unsafe(vs['selected_row'], 0, "'k' key pressed for this task.")
+                    # A task-level action's log is best placed at the start of its steps.
+                    # We ensure there are steps to log to, otherwise we don't log.
+                    if self.model.tasks[vs['selected_row']]['steps']:
+                        self.model._log_debug_unsafe(vs['selected_row'], 0, "'k' key pressed for this task.")
                     self.model.kill_task_row(vs['selected_row'])
 
     def run_loop(self):
         """The main event loop of the application."""
         self.start_initial_tasks()
+        last_state_snapshot = None
         while self.app_running:
-            draw_ui(self.stdscr, self.model, self.view_state)
+            with self.model.state_lock:
+                current_state_snapshot = [s['status'] for t in self.model.tasks for s in t['steps']]
+            if current_state_snapshot != last_state_snapshot:
+                self.ui_dirty = True
+                last_state_snapshot = current_state_snapshot
+            if self.ui_dirty:
+                draw_ui(self.stdscr, self.model, self.view_state)
+                self.ui_dirty = False
             self.handle_input()
             time.sleep(0.05)
-        # For Python 3.9+, we can cancel pending futures on shutdown.
+        
         if sys.version_info >= (3, 9): self.executor.shutdown(wait=False, cancel_futures=True)
         else: self.executor.shutdown(wait=False)
         self.stdscr.erase(); self.stdscr.attron(curses.A_BOLD); self.stdscr.addstr(0, 0, "Quitting: Cleaning up and saving state..."); self.stdscr.attroff(curses.A_BOLD); self.stdscr.refresh()

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-TaskPanel - Model (Production-Ready)
+TaskPanel - Model (Production-Ready with Hierarchical Logging)
 
 This file defines the data structures and core business logic for the task runner.
 It is completely independent of the UI (View) and user input handling (Controller).
@@ -13,10 +13,9 @@ Key Robustness Features:
 - State persistence includes a SHA256 hash of the source CSV. If the CSV changes,
   the state is automatically invalidated to prevent data inconsistency.
 - Intelligently resumes from state:
-  - Tasks that were interrupted (in RUNNING/KILLED state) are reset to PENDING for re-execution.
-  - Tasks that were finished (SUCCESS/FAILED/SKIPPED) have their full state restored.
-- State file saves all serializable step info: status, output, and debug logs,
-  providing a complete snapshot for auditing and post-mortem debugging.
+  - Tasks that were interrupted are reset from the point of failure, preserving prior SUCCESS steps.
+- Logs stdout/stderr directly to a unique, hierarchical directory structure
+  (`.logs/line<N>_<TaskName>/step<I>.log`) to prevent memory overflow and handle duplicate task names.
 """
 import csv
 import json
@@ -37,10 +36,9 @@ class TaskModel:
     def __init__(self, csv_path: str):
         self.csv_path = csv_path
         self.state_file_path = f".{os.path.basename(csv_path)}.state.json"
+        self.log_dir = f".{os.path.basename(csv_path)}.logs"
         self.tasks = []
         self.dynamic_header = []
-        # A Re-entrant Lock is used to prevent deadlocks when a thread that already
-        # holds the lock needs to call another function that also acquires the same lock.
         self.state_lock = threading.RLock()
 
     def _log_debug_unsafe(self, task_index, step_index, message):
@@ -65,6 +63,7 @@ class TaskModel:
     def load_tasks_from_csv(self):
         """Loads tasks from a CSV and applies any previously saved state."""
         print(f"Loading tasks from '{self.csv_path}'...")
+        os.makedirs(self.log_dir, exist_ok=True)
         try:
             with open(self.csv_path, 'r', encoding='utf-8') as f:
                 reader = csv.reader(f)
@@ -72,18 +71,27 @@ class TaskModel:
                 if not all_rows: raise StopIteration
                 
                 longest_row = max(all_rows, key=len)
-                # Handle case where there are no command columns
                 cmd_headers = [cmd.strip().split()[0].split('/')[-1] for cmd in longest_row[2:]] if len(longest_row) > 2 else []
                 self.dynamic_header = ["TaskName", "Info"] + cmd_headers
                 
-                for row in all_rows:
+                for line_num, row in enumerate(all_rows, 1):
                     if len(row) < 1: continue
-                    task_name = row[0].strip()
-                    info = row[1].strip() if len(row) > 1 else ""
+                    task_name, info = row[0].strip(), row[1].strip() if len(row) > 1 else ""
                     commands = [cmd for cmd in row[2:] if cmd.strip()]
-                    steps = [{"command": cmd, "status": STATUS_PENDING, "process": None,
-                              "output": {"stdout": "", "stderr": ""}, "start_time": None,
-                              "debug_log": deque(maxlen=50)} for cmd in commands]
+                    
+                    # Sanitize task name to create a valid directory name
+                    safe_name = "".join(c if c.isalnum() else "_" for c in task_name)
+                    task_log_dir_name = f"{line_num}_{safe_name}"
+                    task_log_path = os.path.join(self.log_dir, task_log_dir_name)
+                    os.makedirs(task_log_path, exist_ok=True)
+                    
+                    steps = []
+                    for i, cmd in enumerate(commands):
+                        log_filepath = os.path.join(task_log_path, f"step{i}.log")
+                        steps.append({"command": cmd, "status": STATUS_PENDING, "process": None,
+                                      "log_path": log_filepath, "start_time": None,
+                                      "debug_log": deque(maxlen=50)})
+                    
                     self.tasks.append({"name": task_name, "info": info, "steps": steps, "run_counter": 0})
             print(f"Loaded {len(self.tasks)} tasks successfully.")
             self._resume_state()
@@ -112,28 +120,33 @@ class TaskModel:
                     if task_name in task_map:
                         task = task_map[task_name]
                         saved_steps = task_state.get('steps', [])
-                        was_interrupted = any(s.get('status') in [STATUS_RUNNING, STATUS_KILLED] for s in saved_steps)
-                        if was_interrupted:
-                            print(f"  - Task '{task_name}' was interrupted. Resetting to PENDING for re-execution.")
-                            for step in task['steps']: step['status'] = STATUS_PENDING
+                        interrupted_at = -1
+                        for i, s in enumerate(saved_steps):
+                            if s.get('status') in [STATUS_RUNNING, STATUS_KILLED]:
+                                interrupted_at = i; break
+                        if interrupted_at != -1:
+                            print(f"  - Task '{task_name}' was interrupted. Resuming from step {interrupted_at}.")
+                            for i in range(interrupted_at):
+                                if i < len(task['steps']) and i < len(saved_steps):
+                                    task['steps'][i]['status'] = saved_steps[i].get('status', STATUS_PENDING)
+                            for i in range(interrupted_at, len(task['steps'])):
+                                task['steps'][i]['status'] = STATUS_PENDING
                         else:
                             task['info'] = task_state.get('info', task['info'])
                             for i, saved_step in enumerate(saved_steps):
                                 if i < len(task['steps']):
                                     task['steps'][i]['status'] = saved_step.get('status', STATUS_PENDING)
-                                    task['steps'][i]['output'] = saved_step.get('output', {"stdout": "", "stderr": ""})
-                                    task['steps'][i]['debug_log'] = deque(saved_step.get('debug_log', []), maxlen=50)
         except (json.JSONDecodeError, IOError, KeyError) as e:
             print(f"Warning: Could not read or parse state file '{self.state_file_path}'. Starting fresh. Error: {e}")
 
     def persist_state(self):
-        """Saves a complete snapshot of all tasks and the CSV hash."""
+        """Saves a minimal state of all tasks and the CSV hash."""
         print("\nPersisting state...")
         state_to_save = []
         with self.state_lock:
             for task in self.tasks:
-                steps_data = [{"status": s['status'], "output": s['output'], "debug_log": list(s['debug_log'])} for s in task['steps']]
-                task_data = {"name": task['name'], "info": task.get('info', ''), "steps": steps_data}
+                task_data = {"name": task['name'], "info": task.get('info', ''),
+                             "steps": [{"status": s['status']} for s in task['steps']]}
                 state_to_save.append(task_data)
         final_data = {"source_csv_sha256": self._calculate_hash(self.csv_path), "tasks": state_to_save}
         try:
@@ -156,40 +169,41 @@ class TaskModel:
                 os.killpg(pgid, signal.SIGKILL)
 
     def run_task_row(self, task_index, run_counter, start_step_index=0):
-        """
-        Executes the steps for a task. This is the main function for worker threads.
-        It uses a `run_counter` to ensure that only the latest command (e.g., from a
-        rerun) is authoritative, preventing race conditions.
-        """
+        """Executes the steps for a task, logging output directly to files."""
         for i in range(start_step_index, len(self.tasks[task_index]["steps"])):
             step = self.tasks[task_index]["steps"][i]
             with self.state_lock:
                 if self.tasks[task_index]['run_counter'] != run_counter:
                     self._log_debug_unsafe(task_index, i, f"Worker with stale run_counter ({run_counter}) exiting.")
                     return
-                if i > 0 and self.tasks[task_index]["steps"][i-1]["status"] in [STATUS_FAILED, STATUS_SKIPPED, STATUS_KILLED]:
-                    step["status"] = STATUS_SKIPPED; continue
+                if step['status'] != STATUS_PENDING:
+                    self._log_debug_unsafe(task_index, i, f"Skipping step already in state {step['status']}.")
+                    continue
                 step["status"] = STATUS_RUNNING; step["start_time"] = time.time()
                 self._log_debug_unsafe(task_index, i, f"Starting step (run_counter {run_counter}).")
             try:
-                popen_kwargs = {"shell": True, "stdout": subprocess.PIPE, "stderr": subprocess.PIPE, "preexec_fn": os.setsid}
-                if sys.version_info >= (3, 7): popen_kwargs['text'] = True; popen_kwargs['encoding'] = 'utf-8'
-                else: popen_kwargs['universal_newlines'] = True
-                process = subprocess.Popen(step["command"], **popen_kwargs)
-                with self.state_lock:
-                    if self.tasks[task_index]['run_counter'] != run_counter: self._kill_process_group(task_index, i, process); return
-                    step["process"] = process
-                    self._log_debug_unsafe(task_index, i, f"Process started with PID: {process.pid}")
+                with open(step['log_path'], 'w', encoding='utf-8') as log_file:
+                    popen_kwargs = {"shell": True, "stdout": log_file, "stderr": subprocess.STDOUT, "preexec_fn": os.setsid}
+                    process = subprocess.Popen(step["command"], **popen_kwargs)
+                    with self.state_lock:
+                        if self.tasks[task_index]['run_counter'] != run_counter: self._kill_process_group(task_index, i, process); return
+                        step["process"] = process
+                        self._log_debug_unsafe(task_index, i, f"Process started with PID: {process.pid}. Log: {step['log_path']}")
+                    process.wait()
                 
-                stdout, stderr = process.communicate()
-                
+                # We need to read back the log to check if it's empty for our success criteria.
+                stderr_content = ""
+                with open(step['log_path'], 'r', encoding='utf-8') as log_file:
+                    full_log = log_file.read()
+                    # A more complex script could prefix stderr with "ERROR:" to allow reliable separation.
+                    # For now, we revert to the most reliable standard: the exit code.
+                    # You can re-add `and not full_log.strip()` to the success condition if needed.
                 with self.state_lock:
                     if self.tasks[task_index]['run_counter'] != run_counter: return
                     duration = time.time() - step["start_time"] if step.get("start_time") else 0
                     step["start_time"] = None
-                    step["output"] = {"stdout": stdout, "stderr": stderr}
                     if step["status"] == STATUS_RUNNING:
-                        step["status"] = STATUS_SUCCESS if process.returncode == 0 and not stderr.strip() else STATUS_FAILED
+                        step["status"] = STATUS_SUCCESS if process.returncode == 0 else STATUS_FAILED
                     self._log_debug_unsafe(task_index, i, f"Process finished code {process.returncode}. Status: {step['status']}. Duration: {duration:.2f}s.")
                     if step["status"] != STATUS_SUCCESS:
                         for j in range(i + 1, len(self.tasks[task_index]["steps"])): self.tasks[task_index]["steps"][j]["status"] = STATUS_SKIPPED
@@ -199,27 +213,37 @@ class TaskModel:
                     if self.tasks[task_index]['run_counter'] != run_counter: return
                     step["status"] = STATUS_FAILED; step["start_time"] = None
                     self._log_debug_unsafe(task_index, i, f"CRITICAL ERROR: {e}")
+                    try:
+                        with open(step['log_path'], 'a', encoding='utf-8') as log_file:
+                            log_file.write(f"\n\n--- TASKPANEL CRITICAL ERROR ---\n{e}\n")
+                    except IOError: pass
                 break
 
     def rerun_task_from_step(self, executor, task_index, start_step_index):
-        """Handles 'rerun' by invalidating the old run and submitting a new one to the executor."""
         with self.state_lock:
             task = self.tasks[task_index]
+            self._log_debug_unsafe(task_index, start_step_index, "RERUN triggered.")
             task['run_counter'] += 1
             new_run_counter = task['run_counter']
             self._log_debug_unsafe(task_index, start_step_index, f"New run_counter is {new_run_counter}.")
             for i in range(start_step_index, len(task["steps"])):
-                if task["steps"][i]["process"]: self._kill_process_group(task_index, i, task["steps"][i]["process"])
-                if task["steps"][i]["status"] == STATUS_RUNNING: task["steps"][i]["status"] = STATUS_KILLED
-            for i in range(start_step_index, len(task["steps"])):
-                step = task["steps"][i]
-                step["status"] = STATUS_PENDING; step["start_time"] = None; step["output"] = {"stdout": "", "stderr": ""}
+                step_to_reset = task["steps"][i]
+                if step_to_reset["process"]: self._kill_process_group(task_index, i, step_to_reset["process"])
+                if step_to_reset["status"] == STATUS_RUNNING: step_to_reset["status"] = STATUS_KILLED
+                step_to_reset["status"] = STATUS_PENDING; step_to_reset["start_time"] = None
+                # Clean up old log file for a fresh start
+                try:
+                    if os.path.exists(step_to_reset['log_path']):
+                        os.remove(step_to_reset['log_path'])
+                        self._log_debug_unsafe(task_index, i, f"Removed old log file: {step_to_reset['log_path']}")
+                except OSError as e:
+                     self._log_debug_unsafe(task_index, i, f"Error removing log file: {e}")
         executor.submit(self.run_task_row, task_index, new_run_counter, start_step_index)
 
     def kill_task_row(self, task_index):
-        """Terminates an entire task row by invalidating its run_counter and killing its process."""
         with self.state_lock:
             task = self.tasks[task_index]
+            self._log_debug_unsafe(task_index, 0, "KILL TASK triggered.")
             task['run_counter'] += 1
             kill_point_found = False
             for i, step in enumerate(task["steps"]):
@@ -232,7 +256,6 @@ class TaskModel:
                 elif step["status"] == STATUS_PENDING and kill_point_found: step["status"] = STATUS_SKIPPED
 
     def cleanup(self):
-        """Prepares for a clean shutdown by invalidating all runs and saving state."""
         with self.state_lock:
             for task_index, task in enumerate(self.tasks):
                 task['run_counter'] += 1
