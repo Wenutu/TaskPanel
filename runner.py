@@ -70,10 +70,7 @@ class AppController:
         vs = self.view_state
         h, w = self.stdscr.getmaxyx()
         
-        # ### FIX: Get ALL layout dimensions, including the crucial task_list_h,
-        # ### from the single source of truth in view.py.
-        # This ensures the controller's scrolling logic uses the exact same geometry as the view's drawing logic.
-        _, _, _, num_visible_steps, task_list_h = \
+        _, _, _, _, task_list_h = \
             calculate_layout_dimensions(w, self.model, h, vs['debug_panel_visible'])
         
         # Navigation and Action keys
@@ -113,6 +110,14 @@ class AppController:
                     if steps:
                         max_col = len(steps) - 1
                         vs['selected_col'] = min(max_col, vs['selected_col'] + 1)
+                        max_name_len = max([len(t['name']) for t in self.model.tasks] + [len(self.model.dynamic_header[0])])
+                        info_col_width = 20
+                        step_col_width = max([len(h) for h in self.model.dynamic_header[2:]] + [12]) + 2 if len(self.model.dynamic_header) > 2 else 12
+                        
+                        steps_start_x = 1 + max_name_len + 2 + info_col_width + 3
+                        available_width = w - steps_start_x
+                        num_visible_steps = max(1, available_width // step_col_width)
+                        
                         if vs['selected_col'] >= vs['left_most_step'] + num_visible_steps:
                             vs['left_most_step'] = vs['selected_col'] - num_visible_steps + 1
             self._reset_scroll_states()
@@ -130,8 +135,27 @@ class AppController:
             if vs['selected_col'] >= 0:
                 with self.model.state_lock:
                     if self.model.tasks and vs['selected_row'] < len(self.model.tasks) and vs['selected_col'] < len(self.model.tasks[vs['selected_row']]["steps"]):
-                        self.model._log_debug_unsafe(vs['selected_row'], vs['selected_col'], "'r' key pressed by user.")
-                        self.model.rerun_task_from_step(self.executor, vs['selected_row'], vs['selected_col'])
+                        
+                        # ### NEW: Pre-rerun validation logic. ###
+                        # Before rerunning a step, we must ensure all preceding steps in the
+                        # same task have the status SUCCESS. This enforces strict sequential dependency.
+                        task = self.model.tasks[vs['selected_row']]
+                        step_to_rerun_idx = vs['selected_col']
+                        is_rerun_allowed = True
+                        
+                        for i in range(step_to_rerun_idx):
+                            if task["steps"][i]["status"] != STATUS_SUCCESS:
+                                is_rerun_allowed = False
+                                break
+                        
+                        if is_rerun_allowed:
+                            self.model._log_debug_unsafe(vs['selected_row'], step_to_rerun_idx, "'r' key pressed by user. Rerun allowed.")
+                            self.model.rerun_task_from_step(self.executor, vs['selected_row'], step_to_rerun_idx)
+                        else:
+                            # If not allowed, flash the screen to give feedback and log the reason.
+                            curses.flash()
+                            self.model._log_debug_unsafe(vs['selected_row'], step_to_rerun_idx, "Rerun blocked: A preceding step has not completed successfully.")
+
         elif key == ord('k'):
             if self.model.tasks and vs['selected_row'] < len(self.model.tasks):
                 with self.model.state_lock:

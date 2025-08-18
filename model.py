@@ -28,7 +28,6 @@ import threading
 import time
 import hashlib
 from collections import deque
-import shlex
 
 STATUS_PENDING, STATUS_RUNNING, STATUS_SUCCESS, STATUS_FAILED, STATUS_SKIPPED, STATUS_KILLED = \
     "PENDING", "RUNNING", "SUCCESS", "FAILED", "SKIPPED", "KILLED"
@@ -202,12 +201,9 @@ class TaskModel:
             try:
                 with open(step['log_path_stdout'], 'wb') as stdout_log, \
                      open(step['log_path_stderr'], 'wb') as stderr_log:
-                    
-                    # ### FIX: SECURITY - Remove `shell=True` and parse command with shlex.
-                    # This prevents command injection vulnerabilities and is the standard safe practice.
-                    cmd_list = shlex.split(step["command"])
-                    popen_kwargs = {"stdout": stdout_log, "stderr": stderr_log, "preexec_fn": os.setsid}
-                    process = subprocess.Popen(cmd_list, **popen_kwargs)
+
+                    popen_kwargs = {"shell": True, "stdout": stdout_log, "stderr": stderr_log, "preexec_fn": os.setsid}
+                    process = subprocess.Popen(step["command"], **popen_kwargs)
                     
                     with self.state_lock:
                         if self.tasks[task_index]['run_counter'] != run_counter: self._kill_process_group(task_index, i, process); return
