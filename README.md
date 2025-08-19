@@ -1,97 +1,117 @@
-# TaskPanel
+# TaskPanel: A Robust Interactive Terminal Task Runner
 
-**TaskPanel** is a robust, interactive, terminal-based dashboard for running and monitoring multi-step tasks defined in a simple CSV file. It's designed for workflows in bioinformatics, data processing, and HPC environments where you need to execute a series of commands for many items and visually track their progress.
+TaskPanel is a professional-grade, terminal-based tool designed to run, monitor, and manage multi-step parallel tasks defined in a simple CSV file. Built with a robust Model-View-Controller (MVC) architecture in Python, it provides a highly responsive and fault-tolerant TUI (Text-based User Interface) for complex workflows, especially in environments like HPC clusters or CI/CD pipelines.
 
+ 
+It excels at managing long-running processes by offering features like intelligent state persistence, concurrency control, and detailed, real-time feedback without overwhelming system resources.
 
-*(This is a representative GIF. You can replace this with an actual screenshot or recording of your tool in action.)*
+## Key Features
 
----
+TaskPanel was engineered for stability and professional use. Its features are built on a foundation of robust error handling and concurrent programming best practices.
 
-## Core Features
+#### Core Functionality
+*   **Parallel Execution**: Runs each task (row in the CSV) in a parallel worker thread.
+*   **Sequential Steps**: Executes the steps (columns) within each task sequentially.
+*   **Interactive TUI**: A full-screen, responsive `curses`-based interface to monitor the status of every step.
+*   **Detailed Views**: A context-aware panel shows the full, multi-line `Info` for a task or the `STDOUT`/`STDERR` for a specific step.
+*   **Advanced Navigation**:
+    *   **Vertical Scrolling**: Seamlessly handles hundreds or thousands of tasks using `Up`/`Down`, `PgUp`/`PgDn`, `Home`/`End`.
+    *   **Horizontal Scrolling**: Manages tasks with dozens of steps using `Left`/`Right` arrows to scroll the view.
 
-*   **Interactive Terminal UI**: A clean, responsive `curses`-based interface to navigate tasks, view statuses, and inspect outputs without leaving your terminal.
-*   **Simple CSV-based Task Definition**: Define complex, multi-step workflows in a plain CSV file. Each row is a task, and each column after the first two is a command step.
-*   **Concurrent Task Execution**: Run multiple tasks in parallel using a configurable thread pool to maximize the use of your system's resources.
-*   **Robust State Persistence**: The application automatically saves its state upon exit. If you stop and restart it, it seamlessly resumes from where it left off.
-*   **Data Integrity Checks**: State is only resumed if the task file hasn't changed (verified via a SHA256 checksum), preventing inconsistent states.
-*   **In-flight Task Control**: Interactively **kill** a running task row or **rerun** a task from any specific step, even if it has failed or is still running.
-*   **Detailed Output & Debug Views**: Instantly view the `stdout` and `stderr` for any selected step. A toggleable debug panel provides deeper insight into the runner's internal operations for each step.
-*   **Clean Process Management**: Uses process groups to ensure that when a task is killed, its entire process tree is terminated, leaving no orphaned processes behind.
+#### Unmatched Robustness & Reliability
+*   **Intelligent Resume on Crash**: If the application is interrupted, it intelligently resumes upon restart.
+    *   **Completed tasks** (SUCCESS, FAILED) are preserved.
+    *   **Interrupted tasks** (RUNNING, KILLED) are precisely reset from the point of failure, preserving all prior successful steps.
+*   **State Integrity Guarantee**:
+    *   Task state is saved to a JSON file (`.tasks.csv.state.json`).
+    *   A **SHA256 hash** of the source CSV is stored in the state file. If the CSV is modified in any way, TaskPanel automatically invalidates the old state to prevent data corruption and starts fresh.
+    *   State file writes are **atomic**, preventing corruption even if the application is killed during a save.
+*   **Concurrency Control**: Uses a `ThreadPoolExecutor` to limit the number of concurrently running tasks (`--max-workers` flag), preventing system resource exhaustion with large CSV files.
+*   **Deadlock-Free Threading**: Employs a robust `run_counter` mechanism and `RLock` to manage thread ownership, ensuring that rapid `rerun` or `kill` commands are handled safely without race conditions or deadlocks.
 
-## Prerequisites
+#### Performance & Debugging
+*   **High-Performance Log Archiving**: `stdout` and `stderr` for each step are streamed directly to unique log files (`.logs/001-TaskName-Info/step-01.log`). This prevents memory overflow from tasks with massive output.
+*   **Smart UI Refresh**: The UI only redraws when a state changes or the user provides input, ensuring minimal CPU usage when idle.
+*   **Contextual Debug Panel**: A toggleable (`d` key) panel shows detailed, step-specific lifecycle logs, including user actions (`rerun`, `kill`), process PIDs, and execution timings.
 
-*   **OS**: A POSIX-compliant operating system (Linux, macOS, etc.).
-*   **Python**: Python 3.6+
+## Installation & Setup
 
-## Installation & Usage
+TaskPanel is designed to run on POSIX-like systems (Linux, macOS) with Python 3.6+.
 
-1.  **Clone the repository:**
-    ```bash
-    git clone <your-repo-url>
-    cd TaskPanel
-    ```
+#### 1. Prerequisites
+- Python 3.6+
+- A terminal with `curses` support.
 
-2.  **Create a tasks file:**
-    Create a `tasks.csv` file in the directory. The format is simple:
-    *   **Column 1**: A unique name for the task (e.g., a sample ID).
-    *   **Column 2**: A short, descriptive piece of information (optional).
-    *   **Column 3 onwards**: The shell commands to be executed in sequence for that task.
+No external libraries are required.
 
-    **Example `tasks.csv`:**
-    ```csv
-    Sample_A,ControlGroup,"echo 'Starting A'; sleep 2; script_align.sh A.fastq", "echo 'Analyzing A'; script_analyze.sh A.bam", "echo 'Done A'; date > A.done"
-    Sample_B,TreatmentGroup,"echo 'Starting B'; sleep 2; script_align.sh B.fastq", "echo 'Analyzing B'; script_analyze.sh B.bam", "echo 'Done B'; date > B.done"
-    Sample_C,ControlGroup,"echo 'Starting C'; sleep 2; script_align.sh C.fastq", "echo 'Analyzing C'; script_analyze.sh C.bam", "echo 'Done C'; date > C.done"
-    Sample_D,FailedCase,"echo 'This will fail'; sleep 1; exit 1", "echo 'This will be skipped'", "echo 'This will also be skipped'"
-    ```
+#### 2. File Structure
+Organize your project as follows:
 
-3.  **Run the application:**
-    ```bash
-    python3 runner.py
-    ```
-    By default, it looks for `tasks.csv` and uses a number of parallel workers equal to your CPU cores.
+```
+task_runner/
+├── runner.py             # Main executable (Controller)
+├── model.py              # Data and business logic (Model)
+├── view.py               # TUI rendering (View)
+├── tasks.csv             # Your task definitions
+└── scripts/
+    ├── build.sh
+    └── deploy.sh
+```
 
-    You can specify a different CSV file and set the number of workers:
-    ```bash
-    python3 runner.py /path/to/my_pipeline.csv --max-workers 8
-    ```
+#### 3. Prepare your `tasks.csv`
+The CSV file defines your workflow. It does not use a header row.
 
-## Controls
+**Format**: `TaskName, Info, Command1, Command2, ...`
 
-Navigate the dashboard using your keyboard:
+*   **TaskName**: A unique name or identifier for the task.
+*   **Info**: A short description, version number, or other metadata. Displayed in its own column.
+*   **Command1, Command2, ...**: The shell commands to be executed sequentially.
 
-| Key(s)                  | Action                                            |
-| ----------------------- | ------------------------------------------------- |
-| `↑` `↓` `←` `→`         | Navigate the task grid.                           |
-| `PgUp` / `PgDn`         | Scroll the task list up or down by a full page.   |
-| `Home` / `End`          | Jump to the first or last task.                   |
-| `r`                     | **Rerun** the currently selected task from the currently selected step. |
-| `k`                     | **Kill** the entire row for the currently selected task. |
-| `d`                     | Toggle the **Debug Panel** at the bottom of the screen. |
-| `q`                     | **Quit** the application (safely saves state).    |
+**Example `tasks.csv`:**
+```csv
+WebApp-Build,v1.2-main,./scripts/checkout.sh,./scripts/build.sh --target web,./scripts/test.sh
+API-Server,v1.2-main,./scripts/checkout.sh,./scripts/build.sh --target api,./scripts/test.sh --integration
+Legacy-Tool,rev-2023-q4,"A long, multi-line description of this legacy process.
+It is important to monitor its output.",./scripts/run_legacy.sh
+```
 
-## How It Works: The MVC Architecture
+## Usage
 
-TaskPanel is built on a classic **Model-View-Controller (MVC)** architecture, which separates concerns and makes the codebase clean and maintainable.
+Navigate to the `task_runner` directory and run the main controller script.
 
-*   **`model.py` (The Model)**
-    *   The "brain" of the application. It manages all data and business logic.
-    *   It knows nothing about the UI.
-    *   **Responsibilities**: Loading tasks from CSV, managing the state of every step (`PENDING`, `RUNNING`, `SUCCESS`, etc.), executing commands in subprocesses, handling state persistence (saving/loading), and ensuring thread safety with locks.
+#### Basic Execution
+To run with the default `tasks.csv` and a worker pool sized to your CPU count:
+```bash
+python runner.py
+```
 
-*   **`view.py` (The View)**
-    *   The "face" of the application. Its only job is to present data from the Model to the user.
-    *   **Responsibilities**: Rendering the entire terminal UI with `curses`, applying colors for different statuses, drawing the task grid, and displaying output/debug logs. It reads data from the model but never modifies it.
+#### Specifying a CSV and Worker Count
+```bash
+python runner.py /path/to/my_workflow.csv --max-workers 8
+```
 
-*   **`runner.py` (The Controller)**
-    *   The "conductor" that connects the Model and the View.
-    *   **Responsibilities**: Initializing the application, handling all user input (keyboard presses), and translating those inputs into actions. For example, when you press `r`, the Controller tells the Model to rerun a task. It also manages the main application loop, telling the View to redraw itself periodically.
+### Interactive Controls
 
-### Key Design Choices
+| Key           | Action                                        |
+|---------------|-----------------------------------------------|
+| `↑` `↓`         | Navigate between tasks (rows).                |
+| `←` `→`         | Navigate between Info and Step columns.       |
+| `Home` / `End`  | Jump to the first / last task.                |
+| `PgUp` / `PgDn` | Scroll the task list up / down by a full page.|
+| `r`             | **Rerun** the selected step and all subsequent steps for that task. |
+| `k`             | **Kill** the currently running task row.      |
+| `d`             | Toggle the contextual **Debug Panel**.        |
+| `[` / `]`         | Scroll the Output Log panel up / down.        |
+| `{` / `}`         | Scroll the Debug Log panel up / down.         |
+| `q`             | **Quit** the application, saving state.       |
 
-*   **Concurrency Safety**: A `ThreadPoolExecutor` runs tasks in parallel. All access to shared task data in the Model is protected by a `threading.RLock` to prevent race conditions. The `run_counter` mechanism cleverly prevents "zombie" threads from overwriting the state of a task that has been rerun by the user.
-*   **Robust Process Killing**: By using `os.setsid`, each step is run in its own process group. When a task is killed via the UI, `os.killpg` is used to terminate the entire group, ensuring no child processes are left orphaned.
-*   **Stateful Resumption**: The state file (`.tasks.csv.state.json`) stores the status of each step. The SHA256 hash of the source CSV is also stored. On startup, if the CSV has been modified, the old state is discarded to prevent errors, forcing a fresh start. Interrupted (`RUNNING` or `KILLED`) tasks are automatically reset to `PENDING`.
+## Architecture: Model-View-Controller (MVC)
+
+TaskPanel is built using a clean MVC architecture to ensure maintainability and separation of concerns.
+
+*   **Model (`model.py`)**: Contains all data (`tasks` list) and business logic. It handles task execution, state changes, and persistence. It has no knowledge of the UI.
+*   **View (`view.py`)**: Responsible for all `curses`-based rendering. It is stateless and simply draws the data provided to it by the Controller.
+*   **Controller (`runner.py`)**: The central hub. It initializes the Model and View, runs the main event loop, handles all user input, calls methods on the Model to update state, and tells the View when to redraw.
 
 ## Contributing
 
