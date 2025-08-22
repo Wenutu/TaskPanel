@@ -14,11 +14,11 @@ from textwrap import wrap
 
 def setup_colors():
     curses.start_color(); curses.use_default_colors()
-    curses.init_pair(COLOR_PAIR_DEFAULT, curses.COLOR_WHITE, -1); curses.init_pair(COLOR_PAIR_HEADER, curses.COLOR_BLACK, curses.COLOR_WHITE)
+    curses.init_pair(COLOR_PAIR_DEFAULT, curses.COLOR_BLUE, -1); curses.init_pair(COLOR_PAIR_HEADER, curses.COLOR_BLACK, curses.COLOR_WHITE)
     curses.init_pair(COLOR_PAIR_PENDING, curses.COLOR_YELLOW, -1); curses.init_pair(COLOR_PAIR_RUNNING, curses.COLOR_CYAN, -1)
     curses.init_pair(COLOR_PAIR_SUCCESS, curses.COLOR_GREEN, -1); curses.init_pair(COLOR_PAIR_FAILED, curses.COLOR_RED, -1)
     curses.init_pair(COLOR_PAIR_SKIPPED, curses.COLOR_BLUE, -1); curses.init_pair(COLOR_PAIR_SELECTED, curses.COLOR_BLACK, curses.COLOR_GREEN)
-    curses.init_pair(COLOR_PAIR_OUTPUT_HEADER, curses.COLOR_YELLOW, -1); curses.init_pair(COLOR_PAIR_TABLE_HEADER, curses.COLOR_WHITE, curses.COLOR_BLUE)
+    curses.init_pair(COLOR_PAIR_OUTPUT_HEADER, curses.COLOR_BLUE, -1); curses.init_pair(COLOR_PAIR_TABLE_HEADER, curses.COLOR_WHITE, curses.COLOR_BLUE)
     curses.init_pair(COLOR_PAIR_KILLED, curses.COLOR_MAGENTA, -1); curses.init_pair(COLOR_PAIR_STDERR, curses.COLOR_RED, -1)
 
 def get_status_color(status):
@@ -147,6 +147,11 @@ def draw_ui(stdscr, model, view_state):
             
             info_text_x = 1 + max_name_len + 2
             info_text = task.get('info', '')
+            lines = info_text.splitlines()
+            if not lines:
+                info_text = ''
+            else:
+                info_text = f"{lines[0]}..."
             info_attr = curses.color_pair(COLOR_PAIR_SELECTED) if (i == selected_row and selected_col == -1) else curses.A_NORMAL
             stdscr.addstr(draw_y, info_text_x, info_text[:info_col_width-1].ljust(info_col_width), info_attr)
             
