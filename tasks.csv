@@ -1,11 +1,39 @@
-Task-A,"Version: 1.2.3 Branch: main Owner: Alice",./scripts/1_checkout.sh Task-A,./scripts/2_build.sh Task-A,./scripts/3_test.sh Task-A,./scripts/4_deploy.sh Task-A,./scripts/1_checkout.sh Task-A,./scripts/2_build.sh Task-A,./scripts/3_test.sh Task-A,./scripts/4_deploy.sh Task-A
-Task-B,"Version:v1.0.0 Branch: main",./scripts/1_checkout.sh Task-B,./scripts/2_build.sh Task-B,./scripts/3_test.sh Task-B,./scripts/4_deploy.sh Task-B,./scripts/1_checkout.sh Task-B,./scripts/2_build.sh Task-B,./scripts/3_test.sh Task-B,./scripts/4_deploy.sh Task-B
-Task-C,"Version:v1.0.0 Branch: main",./scripts/1_checkout.sh Task-C,./scripts/2_build.sh Task-C,./scripts/3_test.sh Task-C,./scripts/4_deploy.sh Task-C,./scripts/1_checkout.sh Task-C,./scripts/2_build.sh Task-C,./scripts/3_test.sh Task-C,./scripts/4_deploy.sh Task-C
-Task-D,"Version:v1.0.0 Branch: main",./scripts/1_checkout.sh Task-D,./scripts/2_build.sh Task-D,./scripts/3_test.sh Task-D,./scripts/4_deploy.sh Task-D,./scripts/1_checkout.sh Task-D,./scripts/2_build.sh Task-D,./scripts/3_test.sh Task-D,./scripts/4_deploy.sh Task-D
-Task-E,"Version:v1.0.0 Branch: main",./scripts/1_checkout.sh Task-E,./scripts/2_build.sh Task-E,./scripts/3_test.sh Task-E,./scripts/4_deploy.sh Task-E,./scripts/1_checkout.sh Task-E,./scripts/2_build.sh Task-E,./scripts/3_test.sh Task-E,./scripts/4_deploy.sh Task-E
-Task-F,"Version:v1.0.0 Branch: main",./scripts/1_checkout.sh Task-F,./scripts/2_build.sh Task-F,./scripts/3_test.sh Task-F,./scripts/4_deploy.sh Task-F,./scripts/1_checkout.sh Task-F,./scripts/2_build.sh Task-F,./scripts/3_test.sh Task-F,./scripts/4_deploy.sh Task-F
-Task-G,"Version:v1.0.0 Branch: main",./scripts/1_checkout.sh Task-G,./scripts/2_build.sh Task-G,./scripts/3_test.sh Task-G,./scripts/4_deploy.sh Task-G,./scripts/1_checkout.sh Task-G,./scripts/2_build.sh Task-G,./scripts/3_test.sh Task-G,./scripts/4_deploy.sh Task-G
-Task-H,v1.0.0,./scripts/1_checkout.sh Task-H,./scripts/2_build.sh Task-H,./scripts/3_test.sh Task-H,./scripts/4_deploy.sh Task-H
-Task-I,v1.0.0,./scripts/1_checkout.sh Task-I,./scripts/2_build.sh Task-I,./scripts/3_test.sh Task-I,./scripts/4_deploy.sh Task-I
-Task-J,v1.0.0,./scripts/1_checkout.sh Task-J,./scripts/2_build.sh Task-J,./scripts/3_test.sh Task-J,./scripts/4_deploy.sh Task-J
-Task-K,v2.0.0,./scripts/1_checkout.sh Task-K,./scripts/2_build.sh Task-K,./scripts/3_test.sh Task-K,./scripts/4_deploy.sh Task-K
+Task-A,"Version: 1.2.3 && Task Task Task
+Branch: main 
+Owner: Alice",./scripts/1_checkout.sh Task-A,./scripts/2_build.sh Task-A,./scripts/3_test.sh Task-A,./scripts/4_deploy.sh Task-A,./scripts/1_checkout.sh Task-A,./scripts/2_build.sh Task-A,./scripts/3_test.sh Task-A,./scripts/4_deploy.sh Task-A
+Task-B,"Version:v1.0.0
+Branch: main",./scripts/1_checkout.sh Task-B,./scripts/2_build.sh Task-B,./scripts/3_test.sh Task-B,./scripts/4_deploy.sh Task-B,./scripts/1_checkout.sh Task-B,./scripts/2_build.sh Task-B,./scripts/3_test.sh Task-B,./scripts/4_deploy.sh Task-B
+Task-C,"Version:v1.0.0
+Branch: main",./scripts/1_checkout.sh Task-C,./scripts/2_build.sh Task-C,./scripts/3_test.sh Task-C,./scripts/4_deploy.sh Task-C,./scripts/1_checkout.sh Task-C,./scripts/2_build.sh Task-C,./scripts/3_test.sh Task-C,./scripts/4_deploy.sh Task-C
+Task-D,"Version:v1.0.0
+Branch: main",./scripts/1_checkout.sh Task-D,./scripts/2_build.sh Task-D,./scripts/3_test.sh Task-D,./scripts/4_deploy.sh Task-D,./scripts/1_checkout.sh Task-D,./scripts/2_build.sh Task-D,./scripts/3_test.sh Task-D,./scripts/4_deploy.sh Task-D
+Task-E,"Version:v1.0.0
+Branch: main",./scripts/1_checkout.sh Task-E,./scripts/2_build.sh Task-E,./scripts/3_test.sh Task-E,./scripts/4_deploy.sh Task-E,./scripts/1_checkout.sh Task-E,./scripts/2_build.sh Task-E,./scripts/3_test.sh Task-E,./scripts/4_deploy.sh Task-E
+Task-F,"Version:v1.0.0
+Branch: main",./scripts/1_checkout.sh Task-F,./scripts/2_build.sh Task-F,./scripts/3_test.sh Task-F,./scripts/4_deploy.sh Task-F,./scripts/1_checkout.sh Task-F,./scripts/2_build.sh Task-F,./scripts/3_test.sh Task-F,./scripts/4_deploy.sh Task-F
+Task-G,"Version:v1.0.0
+Branch: main",./scripts/1_checkout.sh Task-G,./scripts/2_build.sh Task-G,./scripts/3_test.sh Task-G,./scripts/4_deploy.sh Task-G,./scripts/1_checkout.sh Task-G,./scripts/2_build.sh Task-G,./scripts/3_test.sh Task-G,./scripts/4_deploy.sh Task-G
+Task-H,"Version:v1.0.0
+Branch: main",./scripts/1_checkout.sh Task-H,./scripts/2_build.sh Task-H,./scripts/3_test.sh Task-H,./scripts/4_deploy.sh Task-H
+Task-I,"Version:v1.0.0
+Branch: main",./scripts/1_checkout.sh Task-I,./scripts/2_build.sh Task-I,./scripts/3_test.sh Task-I,./scripts/4_deploy.sh Task-I
+Task-J,"Version:v1.0.0
+Branch: main",./scripts/1_checkout.sh Task-J,./scripts/2_build.sh Task-J,./scripts/3_test.sh Task-J,./scripts/4_deploy.sh Task-J
+Task-K,"Version:v2.0.0
+Branch: main",./scripts/1_checkout.sh Task-K,./scripts/2_build.sh Task-K,./scripts/3_test.sh Task-K,./scripts/4_deploy.sh Task-K
+Task-L,"Version:v2.0.0
+Branch: main",./scripts/1_checkout.sh Task-L,./scripts/2_build.sh Task-L,./scripts/3_test.sh Task-L,./scripts/4_deploy.sh Task-L
+Task-M,"Version:v2.0.0
+Branch: main",./scripts/1_checkout.sh Task-M,./scripts/2_build.sh Task-M,./scripts/3_test.sh Task-M,./scripts/4_deploy.sh Task-M
+Task-N,"Version:v2.0.0
+Branch: main",./scripts/1_checkout.sh Task-N,./scripts/2_build.sh Task-N,./scripts/3_test.sh Task-N,./scripts/4_deploy.sh Task-N
+Task-O,"Version:v2.0.0
+Branch: main",./scripts/1_checkout.sh Task-O,./scripts/2_build.sh Task-O,./scripts/3_test.sh Task-O,./scripts/4_deploy.sh Task-O
+Task-P,"Version:v2.0.0
+Branch: main",./scripts/1_checkout.sh Task-P,./scripts/2_build.sh Task-P,./scripts/3_test.sh Task-P,./scripts/4_deploy.sh Task-P
+Task-Q,"Version:v2.0.0
+Branch: main",./scripts/1_checkout.sh Task-Q,./scripts/2_build.sh Task-Q,./scripts/3_test.sh Task-Q,./scripts/4_deploy.sh Task-Q
+Task-R,"Version:v2.0.0
+Branch: main",./scripts/1_checkout.sh Task-R,./scripts/2_build.sh Task-R,./scripts/3_test.sh Task-R,./scripts/4_deploy.sh Task-R
+Task-S,"Version:v2.0.0
+Branch: main",./scripts/1_checkout.sh Task-S,./scripts/2_build.sh Task-S,./scripts/3_test.sh Task-S,./scripts/4_deploy.sh Task-S
