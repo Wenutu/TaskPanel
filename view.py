@@ -2,52 +2,42 @@
 # -*- coding: utf-8 -*-
 
 """
-TaskPanel - View (Optimized with High-Performance Log Reading)
+TaskPanel - View (Corrected and Finalized)
 
-This module is responsible for all rendering logic using 'curses'. It is the 'View'
-in the MVC pattern, taking data from the Model and displaying it without any
-knowledge of business logic or user input handling.
-
-Key Improvements:
-- Implements an efficient `_tail_file` function to read the end of log files,
-  preventing high memory usage for large logs.
-- Functions now expect structured `dataclass` objects (TaskModel, ViewState)
-  for clearer and safer data handling.
+This module handles all rendering logic using 'curses'. It is the 'View' in the MVC
+pattern. This version is hardened against boundary errors and features a dynamic
+side-by-side layout for the log and debug panels, and contextual help text.
 """
 import curses
 import os
-from dataclasses import dataclass
 from enum import Enum, auto
 from textwrap import wrap
 from typing import List, Tuple
 
-# Type hints for data structures from other modules
 from model import Status, TaskModel
 
 # --- Data Structures & Constants ---
-@dataclass
 class ViewState:
-    """A structured container for all UI-related state."""
-    top_row: int = 0
-    selected_row: int = 0
-    selected_col: int = 0
-    debug_panel_visible: bool = False
-    left_most_step: int = 0
-    log_scroll_offset: int = 0
-    debug_scroll_offset: int = 0
-    
-LOG_BUFFER_LINES = 200  # Number of log lines to keep in memory and display.
-MIN_MAIN_HEIGHT = 10    # Minimum terminal height for the main task view.
-FIXED_DEBUG_HEIGHT = 12 # Fixed height for the debug panel.
+    """A standard class container for all UI-related state."""
+    def __init__(self):
+        self.top_row = 0; self.selected_row = 0; self.selected_col = 0
+        self.debug_panel_visible = False; self.left_most_step = 0
+        self.log_scroll_offset = 0; self.debug_scroll_offset = 0
 
-# --- Enum for Type-Safe Color Pair Management ---
+# --- Layout Constants ---
+LOG_BUFFER_LINES = 200      # Number of log lines to keep in memory
+MIN_APP_HEIGHT = 15         # Minimum terminal height to run the app
+MAX_TASK_LIST_HEIGHT = 20   # Max height for the task list pane
+MIN_BOTTOM_PANE_H = 8       # Minimum height for the bottom pane
+HEADER_ROWS = 4             # Number of rows in the header
+SEPARATOR_ROWS = 1          # Number of rows for separators
+
+# --- Color Management (Unchanged) ---
 class ColorPair(Enum):
-    """Enumeration for curses color pairs for improved readability."""
     DEFAULT = 1; HEADER = auto(); PENDING = auto(); RUNNING = auto()
     SUCCESS = auto(); FAILED = auto(); SKIPPED = auto(); SELECTED = auto()
     OUTPUT_HEADER = auto(); TABLE_HEADER = auto(); KILLED = auto(); STDERR = auto()
 
-# Mapping from our Status Enum to our ColorPair Enum
 STATUS_COLOR_MAP = {
     Status.PENDING: ColorPair.PENDING, Status.RUNNING: ColorPair.RUNNING,
     Status.SUCCESS: ColorPair.SUCCESS, Status.FAILED: ColorPair.FAILED,
@@ -55,7 +45,6 @@ STATUS_COLOR_MAP = {
 }
 
 def setup_colors():
-    """Initializes all color pairs used by the application."""
     curses.start_color(); curses.use_default_colors()
     curses.init_pair(ColorPair.DEFAULT.value, curses.COLOR_BLUE, -1)
     curses.init_pair(ColorPair.HEADER.value, curses.COLOR_BLACK, curses.COLOR_WHITE)
@@ -71,201 +60,144 @@ def setup_colors():
     curses.init_pair(ColorPair.STDERR.value, curses.COLOR_RED, -1)
 
 def get_status_color(status: Status):
-    """Returns the curses color pair attribute for a given Status."""
-    color_enum = STATUS_COLOR_MAP.get(status, ColorPair.DEFAULT)
-    return curses.color_pair(color_enum.value)
+    return curses.color_pair(STATUS_COLOR_MAP.get(status, ColorPair.DEFAULT).value)
 
 def _tail_file(filename: str, num_lines: int) -> List[str]:
-    """
-    Efficiently reads the last `num_lines` from a file without loading the whole
-    file into memory. Ideal for large log files.
-    """
     if not os.path.exists(filename): return []
     try:
         with open(filename, "rb") as f:
-            f.seek(0, os.SEEK_END)
-            file_size = f.tell()
+            f.seek(0, os.SEEK_END); file_size = f.tell()
             if file_size == 0: return []
-
-            buffer_size = 4096
-            lines_found = 0
-            block_num = 0
-            
+            buffer_size=4096; lines_found=0; block_num=0
             while lines_found < num_lines and file_size > 0:
-                block_num += 1
-                seek_pos = file_size - (block_num * buffer_size)
+                block_num += 1; seek_pos = file_size - (block_num * buffer_size)
                 if seek_pos < 0: seek_pos = 0
-                
-                f.seek(seek_pos, os.SEEK_SET)
-                buffer = f.read(buffer_size)
+                f.seek(seek_pos, os.SEEK_SET); buffer = f.read(buffer_size)
                 lines_found += buffer.count(b'\n')
-
                 if seek_pos == 0: break
-            
             f.seek(file_size - (block_num * buffer_size) if file_size > (block_num * buffer_size) else 0)
-            last_lines_bytes = f.read().splitlines()[-num_lines:]
-            return [line.decode('utf-8', errors='replace') + '\n' for line in last_lines_bytes]
-    except Exception:
-        return [f"[Error tailing log: {filename}]\n"]
-
+            return [line.decode('utf-8', errors='replace') + '\n' for line in f.read().splitlines()[-num_lines:]]
+    except (IOError, OSError) as e: return [f"[Error tailing log '{filename}': {e}]\n"]
 
 def read_log_files(stdout_path: str, stderr_path: str) -> List[Tuple[str, ColorPair]]:
-    """
-    Reads the tail of stdout/stderr log files, tags lines by stream, and merges them.
-    Returns a list of tuples: (line_text, color_pair_enum).
-    """
-    all_lines = []
-    stdout_content = _tail_file(stdout_path, LOG_BUFFER_LINES)
-    stderr_content = _tail_file(stderr_path, LOG_BUFFER_LINES)
-
-    if stdout_content:
-        all_lines.append(("[STDOUT]\n", ColorPair.OUTPUT_HEADER))
-        all_lines.extend([(line, ColorPair.DEFAULT) for line in stdout_content])
-    if stderr_content:
-        all_lines.append(("[STDERR]\n", ColorPair.STDERR))
-        all_lines.extend([(line, ColorPair.STDERR) for line in stderr_content])
-    
-    # This just combines the tails, it does not interleave them by timestamp.
-    # For a simple log viewer, this is often sufficient.
+    all_lines = []; stdout = _tail_file(stdout_path, LOG_BUFFER_LINES); stderr = _tail_file(stderr_path, LOG_BUFFER_LINES)
+    if stdout: all_lines.append(("[STDOUT]\n", ColorPair.OUTPUT_HEADER)); all_lines.extend([(line, ColorPair.DEFAULT) for line in stdout])
+    if stderr: all_lines.append(("[STDERR]\n", ColorPair.STDERR)); all_lines.extend([(line, ColorPair.STDERR) for line in stderr])
     return all_lines[-LOG_BUFFER_LINES:]
 
-
+# --- Layout Calculation (Unchanged from previous fix) ---
 def calculate_layout_dimensions(w: int, model: TaskModel, h: int, debug_panel_visible: bool) -> dict:
-    """
-    Calculates all dynamic UI dimensions. This is the single source of truth for layout.
-    """
-    debug_panel_active = debug_panel_visible and h >= MIN_MAIN_HEIGHT + FIXED_DEBUG_HEIGHT
-    debug_panel_h = FIXED_DEBUG_HEIGHT if debug_panel_active else 0
-    main_area_h = h - debug_panel_h
-    task_list_h = main_area_h - 4 - 3 # Main height minus header/footer lines
-
-    if not model.tasks:
-        # Provide default values for an empty task list.
-        return {'max_name_len': 10, 'info_col_width': 20, 'step_col_width': 12, 'num_visible_steps': 1, 'task_list_h': task_list_h, 'main_area_h': main_area_h, 'debug_panel_h': debug_panel_h, 'debug_panel_active': debug_panel_active}
-
+    total_fixed_rows = HEADER_ROWS + SEPARATOR_ROWS; content_h = h - total_fixed_rows
+    task_list_potential_h = content_h - MIN_BOTTOM_PANE_H
+    task_list_h = min(MAX_TASK_LIST_HEIGHT, task_list_potential_h)
+    task_list_h = max(0, task_list_h)
+    bottom_pane_h = content_h - task_list_h
+    bottom_pane_h = max(0, bottom_pane_h)
+    log_panel_w, debug_panel_w = 0, 0
+    if debug_panel_visible: log_panel_w = w // 2; debug_panel_w = max(0, w - log_panel_w - 1)
+    else: log_panel_w = w; debug_panel_w = 0
+    if not model.tasks: return {'max_name_len': 10, 'info_col_width': 20, 'step_col_width': 12, 'num_visible_steps': 1, 'task_list_h': task_list_h, 'bottom_pane_h': bottom_pane_h, 'log_panel_w': log_panel_w, 'debug_panel_w': debug_panel_w}
     max_name_len = max([len(t.name) for t in model.tasks] + [len(model.dynamic_header[0])])
-    info_col_w = 20
-    step_col_w = max([len(h) for h in model.dynamic_header[2:]] + [12]) + 2 if len(model.dynamic_header) > 2 else 12
+    info_col_w = 20; step_col_w = max([len(h) for h in model.dynamic_header[2:]] + [12]) + 2 if len(model.dynamic_header) > 2 else 12
     steps_start_x = 1 + max_name_len + 2 + info_col_w + 3
     num_visible = max(1, (w - steps_start_x) // step_col_w)
-    
-    return {
-        'max_name_len': max_name_len, 'info_col_width': info_col_w,
-        'step_col_width': step_col_w, 'num_visible_steps': num_visible,
-        'task_list_h': task_list_h, 'main_area_h': main_area_h,
-        'debug_panel_h': debug_panel_h, 'debug_panel_active': debug_panel_active
-    }
+    return {'max_name_len': max_name_len, 'info_col_width': info_col_w, 'step_col_width': step_col_w, 'num_visible_steps': num_visible, 'task_list_h': task_list_h, 'bottom_pane_h': bottom_pane_h, 'log_panel_w': log_panel_w, 'debug_panel_w': debug_panel_w}
 
+# --- Drawing Functions (Help text updated) ---
+def draw_search_bar(stdscr, w: int, h: int, query: str):
+    search_prompt = "Search: "; bar_y = h - 1; full_text = search_prompt + query
+    try:
+        stdscr.attron(curses.color_pair(ColorPair.HEADER.value)); stdscr.move(bar_y, 0)
+        stdscr.clrtoeol(); stdscr.addstr(bar_y, 0, full_text[:w-1])
+        stdscr.attroff(curses.color_pair(ColorPair.HEADER.value))
+        cursor_x = min(w - 2, len(full_text)); stdscr.move(bar_y, cursor_x)
+    except curses.error: pass
 
-def draw_ui(stdscr, model: TaskModel, view_state: ViewState):
-    """Draws the entire terminal UI based on the current model and view state."""
+def draw_ui(stdscr, model: TaskModel, view_state: ViewState, 
+            filtered_indices: List[int], is_search_mode: bool, search_query: str):
     stdscr.erase(); h, w = stdscr.getmaxyx()
-    if h < 8: stdscr.addstr(0, 0, "Terminal too small."); stdscr.refresh(); return
+    main_h = h - 1 if is_search_mode else h
+    if main_h < MIN_APP_HEIGHT: stdscr.addstr(0, 0, "Terminal too small."); stdscr.refresh(); return
     
-    layout = calculate_layout_dimensions(w, model, h, view_state.debug_panel_visible)
-    main_area_h, debug_panel_active = layout['main_area_h'], layout['debug_panel_active']
-
-    # --- Draw Headers ---
-    warning_message = " (Debug hidden: terminal too small)" if view_state.debug_panel_visible and not debug_panel_active else ""
-    help_text = "ARROWS: Nav | r: Rerun | k: Kill | [/]: Log Scroll | {}/}: Dbg Scroll | d: Debug | q: Quit" + warning_message
+    layout = calculate_layout_dimensions(w, model, main_h, view_state.debug_panel_visible)
+    
+    # --- Draw Headers (Context-Aware) ---
+    if is_search_mode:
+        # CORRECTED: Updated help text for new ESC behavior
+        help_text = "SEARCH MODE: Type to filter. ESC to clear/exit. ENTER to confirm."
+    else:
+        help_text = "ARROWS:Nav | /:Search | r:Rerun | k:Kill | [/]:Log | {}:Dbg | d:Debug | q:Quit"
     stdscr.attron(curses.color_pair(ColorPair.HEADER.value)); stdscr.addstr(0, 0, "TaskPanel".ljust(w)); stdscr.addstr(1, 0, help_text.ljust(w)); stdscr.attroff(curses.color_pair(ColorPair.HEADER.value))
     
+    # --- The rest of the drawing logic is unchanged from the last working version ---
     with model.state_lock:
-        if not model.tasks:
-            if h > 3: stdscr.addstr(3, 1, "No tasks loaded.")
-            stdscr.refresh(); return
+        y_start = HEADER_ROWS
+        header_y = y_start - 1
+        table_header_attr = curses.color_pair(ColorPair.TABLE_HEADER.value)
+        stdscr.addstr(header_y, 1, model.dynamic_header[0].center(layout['max_name_len']), table_header_attr)
+        info_header_x = 1 + layout['max_name_len'] + 2
+        stdscr.addstr(header_y, info_header_x, model.dynamic_header[1].center(layout['info_col_width']), table_header_attr)
+        for i in range(view_state.left_most_step, min(view_state.left_most_step + layout['num_visible_steps'], len(model.dynamic_header) - 2)):
+            j = i - view_state.left_most_step; start_x = info_header_x + layout['info_col_width'] + 3 + (j * layout['step_col_width'])
+            if start_x + layout['step_col_width'] < w: stdscr.addstr(header_y, start_x, model.dynamic_header[i+2].center(layout['step_col_width']), table_header_attr)
         
-        # --- Draw Table Header ---
-        header_y, y_start = 3, 4
-        if header_y < main_area_h:
-            table_header_attr = curses.color_pair(ColorPair.TABLE_HEADER.value)
-            stdscr.addstr(header_y, 1, model.dynamic_header[0].center(layout['max_name_len']), table_header_attr)
-            info_header_x = 1 + layout['max_name_len'] + 2
-            stdscr.addstr(header_y, info_header_x, model.dynamic_header[1].center(layout['info_col_width']), table_header_attr)
-            for i in range(view_state.left_most_step, min(view_state.left_most_step + layout['num_visible_steps'], len(model.dynamic_header) - 2)):
-                j = i - view_state.left_most_step
-                start_x = info_header_x + layout['info_col_width'] + 3 + (j * layout['step_col_width'])
-                if start_x + layout['step_col_width'] < w: stdscr.addstr(header_y, start_x, model.dynamic_header[i+2].center(layout['step_col_width']), table_header_attr)
-        
-        # --- Draw Task List ---
-        last_drawn_y = y_start - 1
-        for i in range(view_state.top_row, min(view_state.top_row + layout['task_list_h'], len(model.tasks))):
-            draw_y = y_start + (i - view_state.top_row)
-            if draw_y >= main_area_h: break
-            task = model.tasks[i]
-            
-            stdscr.addstr(draw_y, 1, task.name.ljust(layout['max_name_len']), curses.A_REVERSE if i == view_state.selected_row else curses.A_NORMAL)
-            
-            info_text_x = 1 + layout['max_name_len'] + 2
-            lines = task.info.splitlines()
-            if lines:
-                trunc_len = max(0, layout['info_col_width'] - 4)
-                first = lines[0]
-                if len(lines) > 1 or len(first) > trunc_len:
-                    info_line = (first[:trunc_len] + " ...") if trunc_len > 0 else "..."
-                else:
-                    info_line = first
-            else:
-                info_line = ""
-            info_attr = curses.color_pair(ColorPair.SELECTED.value) if (i == view_state.selected_row and view_state.selected_col == -1) else curses.A_NORMAL
-            stdscr.addstr(draw_y, info_text_x, info_line[:layout['info_col_width']-1].ljust(layout['info_col_width']), info_attr)
-            
+        visible_task_rows = filtered_indices[view_state.top_row : view_state.top_row + layout['task_list_h']]
+        for i, original_index in enumerate(visible_task_rows):
+            draw_y = y_start + i; task = model.tasks[original_index]; is_selected_row = (i + view_state.top_row == view_state.selected_row)
+            stdscr.addstr(draw_y, 1, task.name.ljust(layout['max_name_len']), curses.A_REVERSE if is_selected_row else curses.A_NORMAL)
+            lines = task.info.splitlines(); info_line = (lines[0][:layout['info_col_width']-4]+"...") if lines and len(lines[0]) > layout['info_col_width']-1 else (lines[0] if lines else "")
+            info_attr = curses.color_pair(ColorPair.SELECTED.value) if (is_selected_row and view_state.selected_col == -1) else curses.A_NORMAL
+            stdscr.addstr(draw_y, info_header_x, info_line.ljust(layout['info_col_width']), info_attr)
             for j in range(view_state.left_most_step, min(view_state.left_most_step + layout['num_visible_steps'], len(task.steps))):
-                step = task.steps[j]
-                attr = curses.color_pair(ColorPair.SELECTED.value) if (i == view_state.selected_row and j == view_state.selected_col) else get_status_color(step.status)
-                start_x = info_text_x + layout['info_col_width'] + 3 + ((j - view_state.left_most_step) * layout['step_col_width'])
+                step = task.steps[j]; attr = curses.color_pair(ColorPair.SELECTED.value) if (is_selected_row and j == view_state.selected_col) else get_status_color(step.status)
+                start_x = info_header_x + layout['info_col_width'] + 3 + ((j - view_state.left_most_step) * layout['step_col_width'])
                 if start_x + layout['step_col_width'] < w: stdscr.addstr(draw_y, start_x, f" {step.status.value} ".center(layout['step_col_width']), attr)
-            last_drawn_y = draw_y
             
-        # --- Draw Log/Info Panel ---
-        output_start_y = last_drawn_y + 2
-        if output_start_y < main_area_h:
-            stdscr.hline(output_start_y - 1, 0, curses.ACS_HLINE, w)
-            task = model.tasks[view_state.selected_row]
-            if view_state.selected_col == -1: # Info panel selected
-                stdscr.addstr(output_start_y, 1, f"Full Info for: {task.name}", curses.A_BOLD)
-                info_lines = [l for line in task.info.splitlines() for l in wrap(line, w-4, break_long_words=False) or ['']]
-                for idx, line in enumerate(info_lines):
-                    if output_start_y + 1 + idx < main_area_h: stdscr.addstr(output_start_y + 1 + idx, 2, line)
-            elif view_state.selected_col < len(task.steps): # A step is selected
-                step = task.steps[view_state.selected_col]
-                header = model.dynamic_header[view_state.selected_col+2] if view_state.selected_col+2 < len(model.dynamic_header) else ""
-                stdscr.addstr(output_start_y, 1, f"Details for: {task.name} -> {header}", curses.A_BOLD)
-                pid_str = f"PID: {step.process.pid}" if step.process and hasattr(step.process, 'pid') else "PID: N/A"
-                stdscr.addstr(output_start_y, w - len(pid_str) - 1, pid_str)
-                
-                output_lines = read_log_files(step.log_path_stdout, step.log_path_stderr)
-                max_scroll = max(0, len(output_lines) - (main_area_h - output_start_y - 1))
-                view_state.log_scroll_offset = min(view_state.log_scroll_offset, max_scroll) # Clamp scroll offset
-                
-                for idx, (line, color) in enumerate(output_lines[view_state.log_scroll_offset:]):
-                    if output_start_y + 1 + idx < main_area_h:
-                        attr = curses.color_pair(color.value) | (curses.A_BOLD if line.startswith('[') else 0)
-                        stdscr.addstr(output_start_y + 1 + idx, 2, line.rstrip()[:w-3], attr)
-                
-                if view_state.log_scroll_offset > 0: stdscr.addstr(output_start_y, w - 15, "[^ ... more]", curses.color_pair(ColorPair.PENDING.value))
-                if view_state.log_scroll_offset < max_scroll: stdscr.addstr(main_area_h - 1, w - 15, "[v ... more]", curses.color_pair(ColorPair.PENDING.value))
-
-    # --- Draw Debug Panel ---
-    if debug_panel_active:
-        stdscr.hline(main_area_h, 0, curses.ACS_HLINE, w)
-        with model.state_lock:
-            task = model.tasks[view_state.selected_row]
-            if 0 <= view_state.selected_col < len(task.steps):
-                step = task.steps[view_state.selected_col]
-                header = model.dynamic_header[view_state.selected_col+2] if view_state.selected_col+2 < len(model.dynamic_header) else ""
-                panel_title, log_snapshot = f"Debug Log for {task.name} -> {header}", list(step.debug_log)
-            else: panel_title, log_snapshot = f"Debug Log for {task.name}", ["Info column has no debug log."]
-        stdscr.addstr(main_area_h + 1, 1, panel_title, curses.A_BOLD)
-        
-        visible_lines = layout['debug_panel_h'] - 2
-        if visible_lines > 0:
-            max_scroll = max(0, len(log_snapshot) - visible_lines)
-            view_state.debug_scroll_offset = min(view_state.debug_scroll_offset, max_scroll)
-            for i, entry in enumerate(log_snapshot[view_state.debug_scroll_offset : view_state.debug_scroll_offset + visible_lines]):
-                if main_area_h + 2 + i < h: stdscr.addstr(main_area_h + 2 + i, 1, entry[:w-2])
+        separator_y = y_start + layout['task_list_h']; output_start_y = separator_y + 1
+        if layout['bottom_pane_h'] > 1:
+            stdscr.hline(separator_y, 0, curses.ACS_HLINE, w)
+            if not filtered_indices: stdscr.addstr(output_start_y, 1, "No tasks match your search.", curses.A_BOLD)
+            else:
+                original_task_index = filtered_indices[view_state.selected_row]; task = model.tasks[original_task_index]; log_w = layout['log_panel_w']
+                if view_state.selected_col == -1:
+                    stdscr.addstr(output_start_y, 1, f"Full Info for: {task.name}"[:log_w-2], curses.A_BOLD)
+                    info_lines = [l for line in task.info.splitlines() for l in wrap(line, log_w-4, break_long_words=False) or ['']]
+                    for idx, line in enumerate(info_lines[:layout['bottom_pane_h']-1]): stdscr.addstr(output_start_y + 1 + idx, 2, line)
+                elif view_state.selected_col < len(task.steps):
+                    step = task.steps[view_state.selected_col]; header = model.dynamic_header[view_state.selected_col+2] if view_state.selected_col+2 < len(model.dynamic_header) else ""
+                    stdscr.addstr(output_start_y, 1, f"Details for: {task.name} -> {header}"[:log_w-2], curses.A_BOLD)
+                    pid_str = f"PID: {step.process.pid}" if step.process and hasattr(step.process, 'pid') else "PID: N/A"
+                    if len(pid_str) < log_w - 2: stdscr.addstr(output_start_y, log_w - len(pid_str) - 1, pid_str)
+                    output_lines = read_log_files(step.log_path_stdout, step.log_path_stderr); max_scroll = max(0, len(output_lines) - (layout['bottom_pane_h'] - 1))
+                    view_state.log_scroll_offset = min(view_state.log_scroll_offset, max_scroll)
+                    for idx, (line, color) in enumerate(output_lines[view_state.log_scroll_offset : view_state.log_scroll_offset + layout['bottom_pane_h'] - 1]):
+                        attr = curses.color_pair(color.value) | (curses.A_BOLD if line.startswith('[') else 0); stdscr.addstr(output_start_y + 1 + idx, 2, line.rstrip()[:log_w-3], attr)
+                    try:
+                        if view_state.log_scroll_offset > 0: stdscr.addstr(output_start_y, max(2, log_w - 15), "[^ ... more]", curses.color_pair(ColorPair.PENDING.value))
+                        if view_state.log_scroll_offset < max_scroll: stdscr.addstr(main_h - 1, max(2, log_w - 15), "[v ... more]", curses.color_pair(ColorPair.PENDING.value))
+                    except curses.error: pass
             
-            if view_state.debug_scroll_offset > 0: stdscr.addstr(main_area_h + 1, w - 15, "[^ ... more]", curses.color_pair(ColorPair.PENDING.value))
-            if view_state.debug_scroll_offset < max_scroll: stdscr.addstr(h - 1, w - 15, "[v ... more]", curses.color_pair(ColorPair.PENDING.value))
+            if view_state.debug_panel_visible and layout['debug_panel_w'] > 1:
+                stdscr.vline(output_start_y, layout['log_panel_w'], curses.ACS_VLINE, layout['bottom_pane_h']); debug_w = layout['debug_panel_w']; debug_x = layout['log_panel_w'] + 2
+                if not filtered_indices: panel_title, log_snapshot = "Debug Log", ["No task selected."]
+                else:
+                    original_task_index = filtered_indices[view_state.selected_row]; task = model.tasks[original_task_index]
+                    if 0 <= view_state.selected_col < len(task.steps):
+                        step = task.steps[view_state.selected_col]; header = model.dynamic_header[view_state.selected_col+2] if view_state.selected_col+2 < len(model.dynamic_header) else ""
+                        panel_title, log_snapshot = f"Debug: {task.name} -> {header}", list(step.debug_log)
+                    else: panel_title, log_snapshot = f"Debug: {task.name}", ["Info column has no debug log."]
+                stdscr.addstr(output_start_y, debug_x - 1, panel_title[:debug_w-1], curses.A_BOLD)
+                visible_lines = layout['bottom_pane_h'] - 1
+                if visible_lines > 0:
+                    max_scroll = max(0, len(log_snapshot) - visible_lines); view_state.debug_scroll_offset = min(view_state.debug_scroll_offset, max_scroll)
+                    for i, entry in enumerate(log_snapshot[view_state.debug_scroll_offset : view_state.debug_scroll_offset + visible_lines]):
+                        stdscr.addstr(output_start_y + 1 + i, debug_x - 1, entry[:debug_w-1])
+                    try:
+                        if view_state.debug_scroll_offset > 0: stdscr.addstr(output_start_y, max(debug_x, w - 15), "[^...]", curses.color_pair(ColorPair.PENDING.value))
+                        if view_state.debug_scroll_offset < max_scroll: stdscr.addstr(main_h - 1, max(debug_x, w - 15), "[v...]", curses.color_pair(ColorPair.PENDING.value))
+                    except curses.error: pass
+    
+    if is_search_mode:
+        draw_search_bar(stdscr, w, h, search_query)
 
     stdscr.refresh()
