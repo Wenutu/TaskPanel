@@ -145,7 +145,17 @@ def draw_ui(stdscr, model: TaskModel, view_state: ViewState,
         for i, original_index in enumerate(visible_task_rows):
             draw_y = y_start + i; task = model.tasks[original_index]; is_selected_row = (i + view_state.top_row == view_state.selected_row)
             stdscr.addstr(draw_y, 1, task.name.ljust(layout['max_name_len']), curses.A_REVERSE if is_selected_row else curses.A_NORMAL)
-            lines = task.info.splitlines(); info_line = (lines[0][:layout['info_col_width']-4]+"...") if lines and len(lines[0]) > layout['info_col_width']-1 else (lines[0] if lines else "")
+            lines = task.info.splitlines()
+            if lines:
+                info_line = lines[0]
+                max_width = layout['info_col_width'] - 3
+                if len(lines) > 1:
+                    info_line = (info_line[:max_width] + "...") if len(info_line) > max_width else (info_line + " ...")
+                else:
+                    if len(info_line) > max_width:
+                        info_line = info_line[:max_width] + "..."
+            else:
+                info_line = ""
             info_attr = curses.color_pair(ColorPair.SELECTED.value) if (is_selected_row and view_state.selected_col == -1) else curses.A_NORMAL
             stdscr.addstr(draw_y, info_header_x, info_line.ljust(layout['info_col_width']), info_attr)
             for j in range(view_state.left_most_step, min(view_state.left_most_step + layout['num_visible_steps'], len(task.steps))):
@@ -168,10 +178,23 @@ def draw_ui(stdscr, model: TaskModel, view_state: ViewState,
                     stdscr.addstr(output_start_y, 1, f"Details for: {task.name} -> {header}"[:log_w-2], curses.A_BOLD)
                     pid_str = f"PID: {step.process.pid}" if step.process and hasattr(step.process, 'pid') else "PID: N/A"
                     if len(pid_str) < log_w - 2: stdscr.addstr(output_start_y, log_w - len(pid_str) - 1, pid_str)
-                    output_lines = read_log_files(step.log_path_stdout, step.log_path_stderr); max_scroll = max(0, len(output_lines) - (layout['bottom_pane_h'] - 1))
+                    
+                    output_lines = read_log_files(step.log_path_stdout, step.log_path_stderr)
+                    wrapped_log_lines = []
+                    log_content_width = max(1, log_w - 4) # Width available for text inside the panel
+                    for line_text, color in output_lines:
+                        wrapped_parts = wrap(line_text.rstrip('\n'), log_content_width) or ['']
+                        for part in wrapped_parts:
+                            wrapped_log_lines.append((part, color))
+
+                    max_scroll = max(0, len(wrapped_log_lines) - (layout['bottom_pane_h'] - 1))
                     view_state.log_scroll_offset = min(view_state.log_scroll_offset, max_scroll)
-                    for idx, (line, color) in enumerate(output_lines[view_state.log_scroll_offset : view_state.log_scroll_offset + layout['bottom_pane_h'] - 1]):
-                        attr = curses.color_pair(color.value) | (curses.A_BOLD if line.startswith('[') else 0); stdscr.addstr(output_start_y + 1 + idx, 2, line.rstrip()[:log_w-3], attr)
+                    
+                    visible_lines = wrapped_log_lines[view_state.log_scroll_offset : view_state.log_scroll_offset + layout['bottom_pane_h'] - 1]
+                    for idx, (line, color) in enumerate(visible_lines):
+                        attr = curses.color_pair(color.value) | (curses.A_BOLD if line.startswith('[') else 0)
+                        stdscr.addstr(output_start_y + 1 + idx, 2, line, attr)
+                    
                     try:
                         if view_state.log_scroll_offset > 0: stdscr.addstr(output_start_y, max(2, log_w - 15), "[^ ... more]", curses.color_pair(ColorPair.PENDING.value))
                         if view_state.log_scroll_offset < max_scroll: stdscr.addstr(main_h - 1, max(2, log_w - 15), "[v ... more]", curses.color_pair(ColorPair.PENDING.value))
@@ -187,11 +210,21 @@ def draw_ui(stdscr, model: TaskModel, view_state: ViewState,
                         panel_title, log_snapshot = f"Debug: {task.name} -> {header}", list(step.debug_log)
                     else: panel_title, log_snapshot = f"Debug: {task.name}", ["Info column has no debug log."]
                 stdscr.addstr(output_start_y, debug_x - 1, panel_title[:debug_w-1], curses.A_BOLD)
-                visible_lines = layout['bottom_pane_h'] - 1
-                if visible_lines > 0:
-                    max_scroll = max(0, len(log_snapshot) - visible_lines); view_state.debug_scroll_offset = min(view_state.debug_scroll_offset, max_scroll)
-                    for i, entry in enumerate(log_snapshot[view_state.debug_scroll_offset : view_state.debug_scroll_offset + visible_lines]):
-                        stdscr.addstr(output_start_y + 1 + i, debug_x - 1, entry[:debug_w-1])
+                
+                wrapped_debug_lines = []
+                debug_content_width = max(1, debug_w - 2) # Width available for text
+                for entry in log_snapshot:
+                    wrapped_parts = wrap(entry, debug_content_width) or ['']
+                    wrapped_debug_lines.extend(wrapped_parts)
+
+                visible_lines_count = layout['bottom_pane_h'] - 1
+                if visible_lines_count > 0:
+                    max_scroll = max(0, len(wrapped_debug_lines) - visible_lines_count)
+                    view_state.debug_scroll_offset = min(view_state.debug_scroll_offset, max_scroll)
+                    visible_lines = wrapped_debug_lines[view_state.debug_scroll_offset : view_state.debug_scroll_offset + visible_lines_count]
+                    for i, line in enumerate(visible_lines):
+                        stdscr.addstr(output_start_y + 1 + i, debug_x - 1, line) # No slicing needed
+                    
                     try:
                         if view_state.debug_scroll_offset > 0: stdscr.addstr(output_start_y, max(debug_x, w - 15), "[^...]", curses.color_pair(ColorPair.PENDING.value))
                         if view_state.debug_scroll_offset < max_scroll: stdscr.addstr(main_h - 1, max(debug_x, w - 15), "[v...]", curses.color_pair(ColorPair.PENDING.value))

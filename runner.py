@@ -267,14 +267,24 @@ def run(csv_path: str, max_workers: int):
         curses.wrapper(main_wrapper)
     except TaskLoadError as e: print(str(e), file=sys.stderr); sys.exit(1)
     except KeyboardInterrupt:
-        print("\nInterrupted by user (Ctrl+C). Saving state and exiting.")
-        if app_controller: app_controller.model.cleanup()
+        print("\nInterrupted by user (Ctrl+C).")
     except Exception:
-        try: curses.nocbreak(); curses.echo(); curses.endwin()
-        except: pass
+        try:
+            curses.nocbreak()
+            curses.echo()
+            curses.endwin()
+        except curses.error:
+            pass # Ignore errors if curses is already closed
+        
         import traceback
-        print("\nAn unexpected error occurred:", file=sys.stderr)
+        print("\n--- A FATAL ERROR OCCURRED ---", file=sys.stderr)
         traceback.print_exc()
+        
+    finally:
+        if app_controller:
+            print("\nEnsuring all child processes are terminated...")
+            app_controller.model.cleanup()
+        print("TaskPanel has exited.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="TaskPanel: A robust, terminal-based tool to run and monitor multi-step tasks.")
