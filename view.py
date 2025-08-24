@@ -14,7 +14,7 @@ from enum import Enum, auto
 from textwrap import wrap
 from typing import List, Tuple
 
-from model import Status, TaskModel
+from .model import Status, TaskModel
 
 # --- Data Structures & Constants ---
 class ViewState:

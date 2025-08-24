@@ -17,8 +17,8 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from model import TaskModel, Status, TaskLoadError
-from view import setup_colors, draw_ui, calculate_layout_dimensions, ViewState
+from .model import TaskModel, Status, TaskLoadError
+from .view import setup_colors, draw_ui, calculate_layout_dimensions, ViewState
 
 class AppController:
     """Manages the application's main loop, user input, and state transitions."""
