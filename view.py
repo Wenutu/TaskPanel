@@ -14,7 +14,7 @@ from enum import Enum, auto
 from textwrap import wrap
 from typing import List, Tuple
 
-from .model import Status, TaskModel
+from model import Status, TaskModel
 
 # --- Data Structures & Constants ---
 class ViewState:
@@ -123,13 +123,11 @@ def draw_ui(stdscr, model: TaskModel, view_state: ViewState,
     
     # --- Draw Headers (Context-Aware) ---
     if is_search_mode:
-        # CORRECTED: Updated help text for new ESC behavior
         help_text = "SEARCH MODE: Type to filter. ESC to clear/exit. ENTER to confirm."
     else:
         help_text = "ARROWS:Nav | /:Search | r:Rerun | k:Kill | [/]:Log | {}:Dbg | d:Debug | q:Quit"
     stdscr.attron(curses.color_pair(ColorPair.HEADER.value)); stdscr.addstr(0, 0, "TaskPanel".ljust(w)); stdscr.addstr(1, 0, help_text.ljust(w)); stdscr.attroff(curses.color_pair(ColorPair.HEADER.value))
     
-    # --- The rest of the drawing logic is unchanged from the last working version ---
     with model.state_lock:
         y_start = HEADER_ROWS
         header_y = y_start - 1
@@ -139,7 +137,8 @@ def draw_ui(stdscr, model: TaskModel, view_state: ViewState,
         stdscr.addstr(header_y, info_header_x, model.dynamic_header[1].center(layout['info_col_width']), table_header_attr)
         for i in range(view_state.left_most_step, min(view_state.left_most_step + layout['num_visible_steps'], len(model.dynamic_header) - 2)):
             j = i - view_state.left_most_step; start_x = info_header_x + layout['info_col_width'] + 3 + (j * layout['step_col_width'])
-            if start_x + layout['step_col_width'] < w: stdscr.addstr(header_y, start_x, model.dynamic_header[i+2].center(layout['step_col_width']), table_header_attr)
+            if start_x + layout['step_col_width'] <= w:
+                stdscr.addstr(header_y, start_x, model.dynamic_header[i+2].center(layout['step_col_width']), table_header_attr)
         
         visible_task_rows = filtered_indices[view_state.top_row : view_state.top_row + layout['task_list_h']]
         for i, original_index in enumerate(visible_task_rows):
@@ -161,7 +160,9 @@ def draw_ui(stdscr, model: TaskModel, view_state: ViewState,
             for j in range(view_state.left_most_step, min(view_state.left_most_step + layout['num_visible_steps'], len(task.steps))):
                 step = task.steps[j]; attr = curses.color_pair(ColorPair.SELECTED.value) if (is_selected_row and j == view_state.selected_col) else get_status_color(step.status)
                 start_x = info_header_x + layout['info_col_width'] + 3 + ((j - view_state.left_most_step) * layout['step_col_width'])
-                if start_x + layout['step_col_width'] < w: stdscr.addstr(draw_y, start_x, f" {step.status.value} ".center(layout['step_col_width']), attr)
+                # FIX: Changed '<' to '<=' to correctly draw the last visible step status if it fits exactly.
+                if start_x + layout['step_col_width'] <= w:
+                    stdscr.addstr(draw_y, start_x, f" {step.status.value} ".center(layout['step_col_width']), attr)
             
         separator_y = y_start + layout['task_list_h']; output_start_y = separator_y + 1
         if layout['bottom_pane_h'] > 1:
