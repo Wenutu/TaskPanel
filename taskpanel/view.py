@@ -15,7 +15,7 @@ from enum import Enum, auto
 from textwrap import wrap
 from typing import List, Tuple, Optional, NamedTuple
 
-from model import Status, Task, TaskModel, Step
+from .model import Status, Task, TaskModel, Step
 
 
 # --- Data Structures & Constants ---

@@ -11,5 +11,4 @@ __pycache__/
 *.swo
 *.DS_Store
 *.json
-Task*
 .*logs/

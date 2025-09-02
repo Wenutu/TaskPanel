@@ -7,7 +7,6 @@ TaskPanel - Controller (with Live Search Navigation, Optimized)
 This module acts as the Controller in the MVC pattern.
 OPTIMIZED with layout caching to improve rendering performance and handle resizes.
 """
-import argparse
 import curses
 import os
 import re
@@ -15,8 +14,8 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from model import TaskModel, Status, TaskLoadError
-from view import setup_colors, draw_ui, ViewState
+from .model import TaskModel, Status, TaskLoadError
+from .view import setup_colors, draw_ui, ViewState
 
 # Constants for timing and key codes
 MAIN_LOOP_SLEEP_S = 0.05
@@ -373,7 +372,23 @@ class AppController:
         time.sleep(SHUTDOWN_CLEANUP_WAIT_S)
 
 
-def run(csv_path: str, max_workers: int, title: str):
+def run(csv_path: str, max_workers: int, title: str = "TaskPanel"):
+    """
+    Public function to launch the TaskPanel UI.
+
+    Args:
+        csv_path (str): Path to the tasks CSV file.
+        max_workers (int): The maximum number of tasks to run in parallel.
+        title (str, optional): A custom title for the application window.
+                               Defaults to "TaskPanel".
+    """
+    # Check arguments programmatically instead of with argparse
+    if not os.path.exists(csv_path):
+        # Raise an exception for the calling script to handle
+        raise FileNotFoundError(f"Error: CSV file not found at '{csv_path}'")
+    if os.name != "posix":
+        raise OSError("Error: This script requires a POSIX-like OS (Linux, macOS).")
+
     try:
         curses.wrapper(
             lambda stdscr: AppController(
@@ -381,11 +396,11 @@ def run(csv_path: str, max_workers: int, title: str):
             ).run_loop()
         )
     except TaskLoadError as e:
-        print(str(e), file=sys.stderr)
-        sys.exit(1)
+        # Re-raise for the calling script to handle
+        raise e
     except KeyboardInterrupt:
         print("\nInterrupted by user (Ctrl+C).")
-    except Exception:
+    except Exception as e:
         import traceback
 
         try:
@@ -394,41 +409,7 @@ def run(csv_path: str, max_workers: int, title: str):
             pass
         print("\n--- A FATAL ERROR OCCURRED ---", file=sys.stderr)
         traceback.print_exc()
+        # Re-raise the original exception after printing details
+        raise e
     finally:
         print("TaskPanel has exited.")
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="TaskPanel: A robust, terminal-based tool to run and monitor multi-step tasks."
-    )
-    parser.add_argument(
-        "csv_path",
-        nargs="?",
-        default="tasks.csv",
-        help="Path to the tasks CSV file (default: tasks.csv)",
-    )
-    parser.add_argument(
-        "-w",
-        "--max-workers",
-        type=int,
-        default=os.cpu_count() or 4,
-        help=f"Max parallel tasks (default: CPU cores, currently {os.cpu_count() or 4})",
-    )
-    parser.add_argument(
-        "--title",
-        type=str,
-        default="TaskPanel",
-        help="Set a custom title for the application window.",
-    )
-    args = parser.parse_args()
-    if not os.path.exists(args.csv_path):
-        print(f"Error: CSV file not found at '{args.csv_path}'", file=sys.stderr)
-        sys.exit(1)
-    if os.name != "posix":
-        print(
-            "Error: This script requires a POSIX-like OS (Linux, macOS).",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    run(csv_path=args.csv_path, max_workers=args.max_workers, title=args.title)
