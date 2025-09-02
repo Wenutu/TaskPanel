@@ -1,12 +1,11 @@
+TaskName,Description,Checkout,Build,Test,Deploy,Checkout_Alt,Build_Alt,Test_Alt
 Task-A,"Version: 1.2.3 && Task Task Task
 Branch: main 
-Owner: Alice",./scripts/1_checkout.sh Task-A,./scripts/2_build.sh Task-A,./scripts/3_test.sh Task-A,./scripts/4_deploy.sh Task-A,./scripts/1_checkout.sh Task-A,./scripts/2_build.sh Task-A,./scripts/3_test.sh Task-A,./scripts/4_deploy.sh Task-A
+Owner: Alice",,,./scripts/3_test.sh Task-A,./scripts/4_deploy.sh Task-A,./scripts/1_checkout.sh Task-A,./scripts/2_build.sh Task-A,./scripts/3_test.sh Task-A,./scripts/4_deploy.sh Task-A
 Task-B,"Version:v1.0.0
 Branch: main",./scripts/1_checkout.sh Task-B,./scripts/2_build.sh Task-B,./scripts/3_test.sh Task-B,./scripts/4_deploy.sh Task-B,./scripts/1_checkout.sh Task-B,./scripts/2_build.sh Task-B,./scripts/3_test.sh Task-B,./scripts/4_deploy.sh Task-B
-Task-C,"Version:v1.0.0
-Branch: main",./scripts/1_checkout.sh Task-C,./scripts/2_build.sh Task-C,./scripts/3_test.sh Task-C,./scripts/4_deploy.sh Task-C,./scripts/1_checkout.sh Task-C,./scripts/2_build.sh Task-C,./scripts/3_test.sh Task-C,./scripts/4_deploy.sh Task-C
 Task-D,"Version:v1.0.0
-Branch: main",./scripts/1_checkout.sh Task-D,./scripts/2_build.sh Task-D,./scripts/3_test.sh Task-D,./scripts/4_deploy.sh Task-D,./scripts/1_checkout.sh Task-D,./scripts/2_build.sh Task-D,./scripts/3_test.sh Task-D,./scripts/4_deploy.sh Task-D
+Branch: main",./scripts/1_checkout.sh Task-D,,./scripts/3_test.sh Task-D,./scripts/4_deploy.sh Task-D,./scripts/1_checkout.sh Task-D,./scripts/2_build.sh Task-D,./scripts/3_test.sh Task-D,./scripts/4_deploy.sh Task-D
 Task-E,"Version:v1.0.0
 Branch: main",./scripts/1_checkout.sh Task-E,./scripts/2_build.sh Task-E,./scripts/3_test.sh Task-E,./scripts/4_deploy.sh Task-E,./scripts/1_checkout.sh Task-E,./scripts/2_build.sh Task-E,./scripts/3_test.sh Task-E,./scripts/4_deploy.sh Task-E
 Task-F,"Version:v1.0.0
@@ -37,3 +36,8 @@ Task-R,"Version:v2.0.0
 Branch: main",./scripts/1_checkout.sh Task-R,./scripts/2_build.sh Task-R,./scripts/3_test.sh Task-R,./scripts/4_deploy.sh Task-R
 Task-S,"Version:v2.0.0
 Branch: main",./scripts/1_checkout.sh Task-S,./scripts/2_build.sh Task-S,./scripts/3_test.sh Task-S,./scripts/4_deploy.sh Task-S
+Task-T,"Version:v2.0.0
+Branch: main",./scripts/1_checkout.sh Task-T,./scripts/2_build.sh Task-T,./scripts/3_test.sh Task-T,./scripts/4_deploy.sh Task-T
+Task-U,"Version:v2.0.0
+Branch: main",./scripts/1_checkout.sh Task-U,./scripts/2_build.sh Task-U,./scripts/3_test.sh Task-U,./scripts/4_deploy.sh Task-U
+Task-V,"Version:v2.0.0

@@ -7,6 +7,7 @@ echo "==> [$$] Starting build for task $TASK_NAME..."
 for i in {1..30}; do
     # test long output
     echo "Building... $i/30"
+    sleep 2
 done
 for i in {1..2}; do
     echo "Submitting build job $i..."
@@ -17,7 +18,7 @@ for i in {1..2}; do
 done
 
 if [ "$TASK_NAME" == "Task-B" ]; then
-  echo "==> Build FAILED for $TASK_NAME!"
+  echo "==> Build FAILED for $TASK_NAME!" >&2
   exit 1
 else
   echo "==> Build successful for $TASK_NAME."
