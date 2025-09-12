@@ -387,9 +387,12 @@ def run(csv_path: str, max_workers: int, title: str = "TaskPanel"):
         title (str, optional): A custom title for the application window.
                                Defaults to "TaskPanel".
     """
-    # Check arguments programmatically instead of with argparse
+    # --- Argument Validation ---
+    if max_workers < 1:
+        raise ValueError(
+            f"max_workers must be a positive integer, but got {max_workers}"
+        )
     if not os.path.exists(csv_path):
-        # Raise an exception for the calling script to handle
         raise FileNotFoundError(f"Error: CSV file not found at '{csv_path}'")
     if os.name != "posix":
         raise OSError("Error: This script requires a POSIX-like OS (Linux, macOS).")

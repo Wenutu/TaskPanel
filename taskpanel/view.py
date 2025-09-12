@@ -108,37 +108,26 @@ def format_duration(seconds: Optional[float]) -> str:
 
 def setup_colors():
     """
-    Set up color pairs for the application.
-    This function attempts to create a color scheme that is compatible with
-    both light and dark terminal backgrounds.
+    Set up color pairs for the application using a universal scheme
+    that works on both light and dark backgrounds.
     """
     curses.start_color()
     curses.use_default_colors()
 
-    # A simple heuristic to guess the background color.
-    # COLOR_BLACK is often near (0,0,0) on dark backgrounds and
-    # near (255,255,255) on light backgrounds.
-    # We assume a light background if the 'red' component of black is high.
-    is_light_bg = False
-    if curses.has_colors() and curses.can_change_color():
-        try:
-            r, _, _ = curses.color_content(curses.COLOR_BLACK)
-            if r > 500:  # Scale is 0-1000
-                is_light_bg = True
-        except curses.error:
-            # Could fail on some terminals, proceed with default (dark)
-            pass
+    # --- Universal Color Scheme ---
+    # This scheme uses high-contrast combinations that are legible
+    # on both light and dark terminal backgrounds, removing the need
+    # for background detection.
+    default_fg = -1  # Use terminal's default foreground
+    default_bg = -1  # Use terminal's default background (transparent)
 
-    # Base colors
-    default_fg = -1
-    default_bg = -1
-    header_fg = curses.COLOR_BLACK if is_light_bg else curses.COLOR_WHITE
-    header_bg = curses.COLOR_WHITE if is_light_bg else curses.COLOR_BLUE
+    # Blue background with white text is a classic high-contrast choice.
+    header_fg = curses.COLOR_WHITE
+    header_bg = curses.COLOR_BLUE
+
+    # Green background with black text for selections is highly visible.
     selected_fg = curses.COLOR_BLACK
     selected_bg = curses.COLOR_GREEN
-    table_header_fg = curses.COLOR_WHITE
-    table_header_bg = curses.COLOR_BLUE
-    empty_step_fg = curses.COLOR_BLACK if is_light_bg else curses.COLOR_WHITE
 
     curses.init_pair(ColorPair.DEFAULT.value, default_fg, default_bg)
     curses.init_pair(ColorPair.HEADER.value, header_fg, header_bg)
@@ -149,10 +138,12 @@ def setup_colors():
     curses.init_pair(ColorPair.SKIPPED.value, curses.COLOR_BLUE, default_bg)
     curses.init_pair(ColorPair.SELECTED.value, selected_fg, selected_bg)
     curses.init_pair(ColorPair.OUTPUT_HEADER.value, curses.COLOR_BLUE, default_bg)
-    curses.init_pair(ColorPair.TABLE_HEADER.value, table_header_fg, table_header_bg)
+    # Use the same style for table headers as the main header for consistency.
+    curses.init_pair(ColorPair.TABLE_HEADER.value, header_fg, header_bg)
     curses.init_pair(ColorPair.KILLED.value, curses.COLOR_MAGENTA, default_bg)
     curses.init_pair(ColorPair.STDERR.value, curses.COLOR_RED, default_bg)
-    curses.init_pair(ColorPair.EMPTY_STEP.value, empty_step_fg, default_bg)
+    # Use default color for empty steps, but dimmed.
+    curses.init_pair(ColorPair.EMPTY_STEP.value, default_fg, default_bg)
 
 
 def get_status_color(status: Status):
@@ -472,11 +463,16 @@ def _draw_bottom_pane(
             }
 
         log_content_width = max(1, layout.log_panel_w - 4)
-        # BUG FIX: The list comprehension must create a list of tuples `(line, color)`.
         wrapped_log_lines = [
             (p, color)
             for line_text, color in output_lines
-            for p in (wrap(line_text.rstrip("\n"), log_content_width) or [""])
+            for p in (
+                wrap(
+                    line_text.replace("\0", "?").expandtabs().rstrip("\n"),
+                    log_content_width,
+                )
+                or [""]
+            )
         ]
 
         max_scroll = max(0, len(wrapped_log_lines) - (layout.bottom_pane_h - 1))
