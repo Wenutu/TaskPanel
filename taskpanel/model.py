@@ -262,7 +262,6 @@ class TaskModel:
         state_to_save = []
         with self.state_lock:
             for task in self.tasks:
-                # BUG FIX: Changed `self.steps` to `task.steps`.
                 # The loop should iterate over the steps of the current `task` object.
                 steps_data = [
                     {"status": s.status.value} if s else None for s in task.steps
@@ -418,11 +417,14 @@ class TaskModel:
             self._log_step_debug(
                 task_index, start_step_index, f"New run_counter is {new_run_counter}."
             )
+
+            for i, step in enumerate(task.steps):
+                if step and step.process:
+                    self._kill_process_group(task_index, i, step.process)
+
             for i in range(start_step_index, len(task.steps)):
                 step = task.steps[i]
                 if step:
-                    if step.process:
-                        self._kill_process_group(task_index, i, step.process)
                     step.status = Status.PENDING
                     step.start_time = None
                     try:
