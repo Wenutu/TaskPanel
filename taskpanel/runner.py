@@ -329,47 +329,52 @@ class AppController:
             self.key_handlers[key]()
 
     def run_loop(self):
-        self.start_initial_tasks()
-        last_state_snapshot = None
-        last_refresh_time = time.time()
-        while self.app_running:
-            self.view_state.spinner_frame += 1
-            with self.model.state_lock:
-                current_state_snapshot = [
-                    (s.status.value, s.start_time) if s else None
-                    for t in self.model.tasks
-                    for s in t.steps
-                ]
-            if current_state_snapshot != last_state_snapshot:
-                self.ui_dirty = True
-                last_state_snapshot = current_state_snapshot
-            if time.time() - last_refresh_time > UI_REFRESH_INTERVAL_S:
-                self.ui_dirty = True
-            if self.ui_dirty:
-                draw_ui(
-                    self.stdscr,
-                    self.model,
-                    self.view_state,
-                    self.filtered_task_indices,
-                    self.is_search_mode,
-                    self.search_query,
-                    self.title,
-                )
-                self.ui_dirty = False
-                last_refresh_time = time.time()
-            self.process_input()
-            time.sleep(MAIN_LOOP_SLEEP_S)
-
-        self.executor.shutdown(
-            wait=False, cancel_futures=True if sys.version_info >= (3, 9) else False
-        )
-        self.stdscr.erase()
-        self.stdscr.addstr(
-            0, 0, "Quitting: Cleaning up and saving state...", curses.A_BOLD
-        )
-        self.stdscr.refresh()
-        self.model.cleanup()
-        time.sleep(SHUTDOWN_CLEANUP_WAIT_S)
+        try:
+            self.start_initial_tasks()
+            last_state_snapshot = None
+            last_refresh_time = time.time()
+            while self.app_running:
+                self.view_state.spinner_frame += 1
+                with self.model.state_lock:
+                    current_state_snapshot = [
+                        (s.status.value, s.start_time) if s else None
+                        for t in self.model.tasks
+                        for s in t.steps
+                    ]
+                if current_state_snapshot != last_state_snapshot:
+                    self.ui_dirty = True
+                    last_state_snapshot = current_state_snapshot
+                if time.time() - last_refresh_time > UI_REFRESH_INTERVAL_S:
+                    self.ui_dirty = True
+                if self.ui_dirty:
+                    draw_ui(
+                        self.stdscr,
+                        self.model,
+                        self.view_state,
+                        self.filtered_task_indices,
+                        self.is_search_mode,
+                        self.search_query,
+                        self.title,
+                    )
+                    self.ui_dirty = False
+                    last_refresh_time = time.time()
+                self.process_input()
+                time.sleep(MAIN_LOOP_SLEEP_S)
+        except KeyboardInterrupt:
+            self.app_running = False
+            print("\nInterrupted by user (Ctrl+C).")
+        finally:
+            if sys.version_info >= (3, 9):
+                self.executor.shutdown(wait=False, cancel_futures=True)
+            else:
+                self.executor.shutdown(wait=False)
+            self.stdscr.erase()
+            self.stdscr.addstr(
+                0, 0, "Quitting: Cleaning up and saving state...", curses.A_BOLD
+            )
+            self.stdscr.refresh()
+            self.model.cleanup()
+            time.sleep(SHUTDOWN_CLEANUP_WAIT_S)
 
 
 def run(csv_path: str, max_workers: int, title: str = "TaskPanel"):

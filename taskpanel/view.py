@@ -31,7 +31,7 @@ class ViewState:
         self.spinner_frame = 0
         self.log_cache = {}
         self.layout_dirty = True
-        self.cached_layout = None
+        self.cached_layout: Optional[LayoutDimensions] = None
 
 
 class LayoutDimensions(NamedTuple):
@@ -107,23 +107,52 @@ def format_duration(seconds: Optional[float]) -> str:
 
 
 def setup_colors():
+    """
+    Set up color pairs for the application.
+    This function attempts to create a color scheme that is compatible with
+    both light and dark terminal backgrounds.
+    """
     curses.start_color()
     curses.use_default_colors()
-    curses.init_pair(ColorPair.DEFAULT.value, curses.COLOR_BLUE, -1)
-    curses.init_pair(ColorPair.HEADER.value, curses.COLOR_BLACK, curses.COLOR_WHITE)
-    curses.init_pair(ColorPair.PENDING.value, curses.COLOR_YELLOW, -1)
-    curses.init_pair(ColorPair.RUNNING.value, curses.COLOR_CYAN, -1)
-    curses.init_pair(ColorPair.SUCCESS.value, curses.COLOR_GREEN, -1)
-    curses.init_pair(ColorPair.FAILED.value, curses.COLOR_RED, -1)
-    curses.init_pair(ColorPair.SKIPPED.value, curses.COLOR_BLUE, -1)
-    curses.init_pair(ColorPair.SELECTED.value, curses.COLOR_BLACK, curses.COLOR_GREEN)
-    curses.init_pair(ColorPair.OUTPUT_HEADER.value, curses.COLOR_BLUE, -1)
-    curses.init_pair(
-        ColorPair.TABLE_HEADER.value, curses.COLOR_WHITE, curses.COLOR_BLUE
-    )
-    curses.init_pair(ColorPair.KILLED.value, curses.COLOR_MAGENTA, -1)
-    curses.init_pair(ColorPair.STDERR.value, curses.COLOR_RED, -1)
-    curses.init_pair(ColorPair.EMPTY_STEP.value, curses.COLOR_BLACK, -1)
+
+    # A simple heuristic to guess the background color.
+    # COLOR_BLACK is often near (0,0,0) on dark backgrounds and
+    # near (255,255,255) on light backgrounds.
+    # We assume a light background if the 'red' component of black is high.
+    is_light_bg = False
+    if curses.has_colors() and curses.can_change_color():
+        try:
+            r, _, _ = curses.color_content(curses.COLOR_BLACK)
+            if r > 500:  # Scale is 0-1000
+                is_light_bg = True
+        except curses.error:
+            # Could fail on some terminals, proceed with default (dark)
+            pass
+
+    # Base colors
+    default_fg = -1
+    default_bg = -1
+    header_fg = curses.COLOR_BLACK if is_light_bg else curses.COLOR_WHITE
+    header_bg = curses.COLOR_WHITE if is_light_bg else curses.COLOR_BLUE
+    selected_fg = curses.COLOR_BLACK
+    selected_bg = curses.COLOR_GREEN
+    table_header_fg = curses.COLOR_WHITE
+    table_header_bg = curses.COLOR_BLUE
+    empty_step_fg = curses.COLOR_BLACK if is_light_bg else curses.COLOR_WHITE
+
+    curses.init_pair(ColorPair.DEFAULT.value, default_fg, default_bg)
+    curses.init_pair(ColorPair.HEADER.value, header_fg, header_bg)
+    curses.init_pair(ColorPair.PENDING.value, curses.COLOR_YELLOW, default_bg)
+    curses.init_pair(ColorPair.RUNNING.value, curses.COLOR_CYAN, default_bg)
+    curses.init_pair(ColorPair.SUCCESS.value, curses.COLOR_GREEN, default_bg)
+    curses.init_pair(ColorPair.FAILED.value, curses.COLOR_RED, default_bg)
+    curses.init_pair(ColorPair.SKIPPED.value, curses.COLOR_BLUE, default_bg)
+    curses.init_pair(ColorPair.SELECTED.value, selected_fg, selected_bg)
+    curses.init_pair(ColorPair.OUTPUT_HEADER.value, curses.COLOR_BLUE, default_bg)
+    curses.init_pair(ColorPair.TABLE_HEADER.value, table_header_fg, table_header_bg)
+    curses.init_pair(ColorPair.KILLED.value, curses.COLOR_MAGENTA, default_bg)
+    curses.init_pair(ColorPair.STDERR.value, curses.COLOR_RED, default_bg)
+    curses.init_pair(ColorPair.EMPTY_STEP.value, empty_step_fg, default_bg)
 
 
 def get_status_color(status: Status):
@@ -268,7 +297,9 @@ def _draw_task_row(
     lines = task.info.splitlines()
     info_line = (lines[0] if lines else "").strip()
     if len(info_line) > layout.info_col_width - 3:
-        info_line = info_line[: layout.info_col_width - 3] + "..."
+        info_line = info_line[: layout.info_col_width - 3]
+    if len(lines) > 1 or len(info_line) > layout.info_col_width - 3:
+        info_line = info_line + "..."
     info_attr = (
         curses.color_pair(ColorPair.SELECTED.value)
         if is_selected and vs.selected_col == -1
