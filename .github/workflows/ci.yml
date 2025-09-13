@@ -8,11 +8,10 @@ on:
 
 jobs:
   test:
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-20.04
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
+        python-version: ['3.6', '3.7', '3.8', '3.9', '3.10', '3.11']
 
     steps:
     - uses: actions/checkout@v4
@@ -31,7 +30,7 @@ jobs:
 
     - name: Lint with flake8
       run: |
-        # Use our relaxed flake8 config
+        # Use relaxed flake8 configuration
         flake8 src/taskpanel tests/ --config=.flake8
 
     - name: Check code formatting with black
@@ -52,7 +51,7 @@ jobs:
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
-      if: matrix.python-version == '3.11' && matrix.os == 'ubuntu-latest'
+      if: matrix.python-version == '3.11'
       with:
         file: ./coverage.xml
         flags: unittests
@@ -103,6 +102,6 @@ jobs:
 
     - name: Run safety checks
       run: |
-        # Create a requirements file for safety to check
+        # Create requirements file for safety check
         pip freeze > requirements-freeze.txt
         safety check -r requirements-freeze.txt || echo "Safety check completed with warnings"

@@ -1,6 +1,6 @@
 # TaskPanel: A Robust Interactive Terminal Task Runner
 
-[![Python Support](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/)
+[![Python Support](https://img.shields.io/badge/python-3.6+-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
@@ -30,13 +30,11 @@ TaskPanel is a professional-grade, terminal-based tool designed to run, monitor,
 
 ## Installation
 
-Install TaskPanel from PyPI:
-
 ```bash
 pip install taskpanel
 ```
 
-Or install from source:
+或从源码安装：
 
 ```bash
 git clone https://github.com/Wenutu/TaskPanel.git
@@ -219,7 +217,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Links
 
+## Links
+
 - [PyPI Package](https://pypi.org/project/taskpanel/)
 - [GitHub Repository](https://github.com/Wenutu/TaskPanel)
+- [Latest Release](https://github.com/Wenutu/TaskPanel/releases/latest)
+- [Download Packages](https://github.com/Wenutu/TaskPanel/releases)
 - [Documentation](https://github.com/Wenutu/TaskPanel#readme)
 - [Issues](https://github.com/Wenutu/TaskPanel/issues)
