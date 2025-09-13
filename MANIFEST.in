@@ -1,0 +1,29 @@
+# Include documentation and configuration files
+include README.md
+include LICENSE
+include MANIFEST.in
+include pyproject.toml
+include setup.py
+
+# Include example files
+recursive-include examples *.py
+recursive-include examples *.csv
+recursive-include examples *.sh
+recursive-include examples *.md
+
+# Include package data
+recursive-include src/taskpanel *.py
+
+# Include tests
+recursive-include tests *.py
+
+# Exclude compiled files and caches
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude __pycache__
+global-exclude .DS_Store
+global-exclude *.so
+global-exclude .git*
+global-exclude .coverage
+global-exclude .pytest_cache
+global-exclude *.egg-info

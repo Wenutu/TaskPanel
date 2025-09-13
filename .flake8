@@ -1,0 +1,15 @@
+[flake8]
+# Relaxed flake8 configuration for development
+max-line-length = 120
+ignore = E501,F541,F401,E203,E741,W503,W504
+per-file-ignores = 
+    tests/*:F401,E402
+exclude = 
+    .git,
+    __pycache__,
+    .pytest_cache,
+    .mypy_cache,
+    build,
+    dist,
+    *.egg-info,
+    .tox

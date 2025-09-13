@@ -8,14 +8,13 @@ This module handles all rendering logic using 'curses'.
 OPTIMIZED to use model-defined log formatters, respecting MVC separation.
 """
 import curses
-import logging
 import os
 import time
 from enum import Enum, auto
 from textwrap import wrap
-from typing import List, Tuple, Optional, NamedTuple
+from typing import List, NamedTuple, Optional, Tuple
 
-from .model import Status, Task, TaskModel, Step
+from .model import Status, Step, Task, TaskModel
 
 
 # --- Data Structures & Constants ---

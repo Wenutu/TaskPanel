@@ -14,8 +14,8 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from .model import TaskModel, Status, TaskLoadError
-from .view import setup_colors, draw_ui, ViewState
+from .model import Status, TaskLoadError, TaskModel
+from .view import ViewState, draw_ui, setup_colors
 
 # Constants for timing and key codes
 MAIN_LOOP_SLEEP_S = 0.05

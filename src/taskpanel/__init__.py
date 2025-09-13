@@ -9,9 +9,10 @@ multi-step parallel tasks defined in a simple CSV file.
 
 __version__ = "1.0.0"
 
+from .model import TaskLoadError
+
 # Expose the primary `run` function for programmatic use and the specific
 # exception for better error handling by the calling script.
 from .runner import run
-from .model import TaskLoadError
 
 __all__ = ["run", "TaskLoadError"]
