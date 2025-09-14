@@ -7,7 +7,7 @@ This package provides a terminal-based tool to run, monitor, and manage
 multi-step parallel tasks defined in a simple CSV file.
 """
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 from .model import TaskLoadError
 
