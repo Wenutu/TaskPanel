@@ -62,15 +62,6 @@ jobs:
         apt-get update
         apt-get install -y git gpg curl
 
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
-      if: matrix.python-version == '3.11'
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        file: ./coverage.xml
-        flags: unittests
-        name: codecov-umbrella
-
   build:
     needs: test
     runs-on: ubuntu-latest
@@ -95,7 +86,7 @@ jobs:
   security:
     needs: test
     runs-on: ubuntu-latest
-    container: python:3.6-slim
+    container: python:3.9-slim
 
     steps:
     - uses: actions/checkout@v4
