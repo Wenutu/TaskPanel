@@ -289,7 +289,6 @@ class TestCLI(unittest.TestCase):
         captured_stderr = StringIO()
 
         with patch.object(sys, "argv", test_args), patch("sys.stderr", captured_stderr):
-
             with self.assertRaises(SystemExit) as cm:
                 cli.main()
 
@@ -357,7 +356,6 @@ class TestCLI(unittest.TestCase):
         with patch.object(sys, "argv", test_args), patch(
             "sys.stderr", captured_stderr
         ), patch("sys.exit"):
-
             try:
                 cli.main()
             except SystemExit:

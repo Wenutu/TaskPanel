@@ -9,13 +9,8 @@ install:  ## Install the package
 
 install-dev:  ## Install development dependencies
 	@echo "Installing development dependencies..."
-	pip install pytest pytest-cov black flake8 safety build twine
+	pip install pytest pytest-cov black flake8 safety build twine tox
 	pip install -e .
-	@if command -v pre-commit >/dev/null 2>&1; then \
-		pre-commit install; \
-	else \
-		echo "💡 Optional: install pre-commit with 'pip install pre-commit' for git hooks"; \
-	fi
 
 test:  ## Run tests
 	pytest tests/ -v
@@ -86,9 +81,6 @@ release:  ## Build and upload to PyPI (use with caution)
 	python -m build
 	twine check dist/*
 	twine upload dist/*
-
-pre-commit:  ## Run pre-commit on all files
-	pre-commit run --all-files
 
 # Development shortcuts
 dev-setup: install-dev  ## Set up development environment
