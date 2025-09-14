@@ -57,7 +57,7 @@ jobs:
           dist/*.tar.gz
           taskpanel-src.tar.gz
         generate_release_notes: true
-        name: Release ${{ env.TAG_NAME }}
+        name: ${{ env.TAG_NAME }}
         body: |
           ## 🚀 TaskPanel ${{ env.RELEASE_VERSION }}
           
@@ -95,7 +95,7 @@ jobs:
           ```bash
           # Create task file
           echo "TaskName,Info,Build,Test" > tasks.csv
-          echo "MyApp,v${{ env.RELEASE_VERSION }},./build.sh,./test.sh" >> tasks.csv
+          echo "MyApp,${{ env.RELEASE_VERSION }},./build.sh,./test.sh" >> tasks.csv
           
           # Run TaskPanel
           taskpanel tasks.csv

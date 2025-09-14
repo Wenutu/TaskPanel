@@ -3,7 +3,7 @@
 max-line-length = 120
 ignore = E501,F541,F401,E203,E741,W503,W504
 per-file-ignores = 
-    tests/*:F401,E402
+    tests/*:F401,E402,E722
 exclude = 
     .git,
     __pycache__,
