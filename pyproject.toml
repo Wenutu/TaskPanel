@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "taskpanel"
-dynamic = ["version"]
+version = "1.0.0"
 description = "A Robust Interactive Terminal Task Runner Library"
 readme = "README.md"
 license = {text = "MIT"}

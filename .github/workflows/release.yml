@@ -1,16 +1,27 @@
-name: Release
+name: Build and Release
 
 on:
   push:
     tags:
       - 'v*'  # Trigger on version tags starting with 'v'
+  workflow_dispatch:  # Allow manual trigger
 
 jobs:
-  build-and-publish:
-    runs-on: ubuntu-20.04  # Use Ubuntu 20.04 for Python 3.6 support
+  build-and-release:
+    runs-on: ubuntu-20.04
+    permissions:
+      contents: write  # Required for creating GitHub releases
+      id-token: write # Required for publishing to PyPI with trusted publishing
 
     steps:
     - uses: actions/checkout@v4
+
+    # KEY STEP: Install Python 3.6 using the deadsnakes PPA.
+    - name: Add deadsnakes PPA and install Python 3.6
+      run: |
+        sudo add-apt-repository ppa:deadsnakes/ppa
+        sudo apt-get update
+        sudo apt-get install -y python3.6 python3.6-distutils python3.6-venv
 
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -22,22 +33,54 @@ jobs:
         python -m pip install --upgrade pip
         pip install build twine
 
+    - name: Extract version from tag
+      if: startsWith(github.ref, 'refs/tags/')
+      run: |
+        echo "RELEASE_VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+        echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+
     - name: Build package
       run: python -m build
 
     - name: Check package
       run: twine check dist/*
 
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
+    - name: Create src/taskpanel archive
+      run: |
+        cd src
+        tar -czf ../taskpanel-src.tar.gz taskpanel/
+        cd ..
+
+    - name: Create GitHub Release and upload assets
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v2
       with:
-        name: taskpanel-dist
-        path: dist/
+        files: |
+          dist/*.whl
+          dist/*.tar.gz
+          taskpanel-src.tar.gz
+        generate_release_notes: true
+        name: Release ${{ env.TAG_NAME }}
+        body: |
+          ## TaskPanel ${{ env.RELEASE_VERSION }}
+          
+          ### Installation
+          
+          **From PyPI:**
+          ```bash
+          pip install taskpanel==${{ env.RELEASE_VERSION }}
+          ```
+          
+          ### Downloads
+          - Wheel: `dist/*.whl`
+          - Source: `dist/*.tar.gz`
+          - Pure source code: `taskpanel-src.tar.gz`
 
     - name: Publish to PyPI
       if: startsWith(github.ref, 'refs/tags/')
       env:
+        # Use an API token for authentication.
         TWINE_USERNAME: __token__
         TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
       run: |
-        twine upload dist/* || echo "PyPI upload failed, but continuing..."
+        twine upload dist/*
