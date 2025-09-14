@@ -8,27 +8,18 @@ on:
 
 jobs:
   build-and-release:
-    # Use the latest GitHub-hosted Ubuntu runner.
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # Required for creating GitHub releases
-      id-token: write # Required for publishing to PyPI with trusted publishing
+      contents: write
+      id-token: write
+
+    # Use a Python 3.6 container for the entire build and release process.
+    container: python:3.6-slim
 
     steps:
     - uses: actions/checkout@v4
 
-    # KEY STEP: Install Python 3.6 using the deadsnakes PPA.
-    - name: Add deadsnakes PPA and install Python 3.6
-      run: |
-        sudo add-apt-repository ppa:deadsnakes/ppa
-        sudo apt-get update
-        sudo apt-get install -y python3.6 python3.6-distutils python3.6-venv
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.6'
-
+    # NOTE: No setup-python or PPA steps are needed.
     - name: Install build dependencies
       run: |
         python -m pip install --upgrade pip
@@ -36,6 +27,7 @@ jobs:
 
     - name: Extract version from tag
       if: startsWith(github.ref, 'refs/tags/')
+      # 'run' steps execute inside the container. $GITHUB_ENV is available.
       run: |
         echo "RELEASE_VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
         echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
@@ -54,6 +46,7 @@ jobs:
 
     - name: Create GitHub Release and upload assets
       if: startsWith(github.ref, 'refs/tags/')
+      # This action runs on the host but can access the 'dist' and '.tar.gz' files.
       uses: softprops/action-gh-release@v2
       with:
         files: |
@@ -82,5 +75,6 @@ jobs:
       env:
         TWINE_USERNAME: __token__
         TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+      # This command runs inside the container and uploads the built packages.
       run: |
         twine upload dist/*
