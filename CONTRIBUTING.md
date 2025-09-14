@@ -30,11 +30,6 @@ Thank you for your interest in contributing to TaskPanel! This document provides
    pip install -e ".[dev]"
    ```
 
-4. **Set up pre-commit hooks**:
-   ```bash
-   pre-commit install
-   ```
-
 ## Development Workflow
 
 ### Code Style
@@ -42,9 +37,7 @@ Thank you for your interest in contributing to TaskPanel! This document provides
 We use several tools to maintain code quality:
 
 - **Black**: Code formatting
-- **isort**: Import sorting  
 - **flake8**: Linting
-- **mypy**: Type checking
 
 Run all formatting tools:
 ```bash

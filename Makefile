@@ -9,7 +9,7 @@ install:  ## Install the package
 
 install-dev:  ## Install development dependencies
 	@echo "Installing development dependencies..."
-	pip install pytest pytest-cov black flake8 mypy bandit safety build twine
+	pip install pytest pytest-cov black flake8 safety build twine
 	pip install -e .
 	@if command -v pre-commit >/dev/null 2>&1; then \
 		pre-commit install; \
