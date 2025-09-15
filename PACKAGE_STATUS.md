@@ -3,7 +3,7 @@
 ## 📦 Package Information
 
 - **Name**: taskpanel
-- **Version**: 1.0.0
+- **Version**: 1.0.1
 - **License**: MIT
 - **Python Support**: 3.6+
 - **Platforms**: Linux, macOS
@@ -25,13 +25,22 @@ TaskPanel/
 │   ├── test_runner.py      # Runner tests
 │   ├── test_view.py        # View tests
 │   └── test_package.py     # Package structure tests
-├── scripts/                # Example workflow scripts
+├── examples/               # Example workflow scripts
+│   ├── app.py              # Example application
 │   ├── tasks.csv           # Sample task definitions
 │   ├── scripts/            # Example scripts
 │   └── README.md           # Examples documentation
-├── .github/workflows/      # CI/CD configuration
-│   ├── ci.yml              # Continuous integration
-│   └── release.yml         # Release automation
+├── .github/                # GitHub configuration
+│   ├── workflows/          # CI/CD configuration
+│   │   ├── ci.yml          # Continuous integration
+│   │   └── release.yml     # Release automation
+│   └── ISSUE_TEMPLATE/     # Issue templates
+│       ├── bug_report.md   # Bug report template
+│       ├── feature_request.md # Feature request template
+│       ├── documentation.md # Documentation improvement
+│       ├── performance.md  # Performance issue template
+│       ├── question.md     # Question/help template
+│       └── config.yml      # Template configuration
 ├── docs/                   # Documentation (future)
 ├── setup.py                # Legacy setup script
 ├── pyproject.toml          # Modern packaging config
@@ -111,13 +120,14 @@ make ci            # Simulate CI checks
 - **Multi-platform**: Tests run on Ubuntu and macOS
 - **Security Checks**: Automated security scanning
 - **Release Automation**: Automatic PyPI publishing
+- **Issue Management**: Comprehensive GitHub issue templates for better community support
 
 ## 📈 Coverage Goals
 
 Target coverage metrics:
-- **Line Coverage**: >90%
+- **Line Coverage**: >67%
 - **Branch Coverage**: >80%
-- **Function Coverage**: >95%
+- **Function Coverage**: >90%
 
 ## 🚀 Release Process
 
@@ -129,23 +139,38 @@ Target coverage metrics:
 ## 📝 Documentation Status
 
 - ✅ README.md (comprehensive usage guide)
-- ✅ CONTRIBUTING.md (development guidelines)
+- ✅ CONTRIBUTING.md (development guidelines)  
 - ✅ CHANGELOG.md (version history)
 - ✅ Examples documentation
 - ✅ API documentation (in code)
+- ✅ GitHub issue templates (bug reports, feature requests, documentation, performance, questions)
+- ✅ Issue template configuration with community links
 - 🔄 Sphinx documentation (future enhancement)
+
+### GitHub Community Support
+
+The project includes a comprehensive set of GitHub issue templates to facilitate community contributions and support:
+
+- **Bug Reports**: Structured template for reporting bugs with environment details, reproduction steps, and error logs
+- **Feature Requests**: Template for suggesting new features with use cases, implementation ideas, and acceptance criteria
+- **Documentation Improvements**: Dedicated template for documentation-related suggestions and improvements
+- **Performance Issues**: Specialized template for performance-related problems with metrics and profiling support
+- **Questions & Help**: Template for user questions and support requests
+- **Template Configuration**: Automated routing to GitHub Discussions and documentation links
+
+These templates ensure consistent, high-quality issue reporting and help maintain an organized project repository.
 
 ## 🎯 Future Enhancements
 
 ### Short Term
 - [ ] Windows support testing
-- [ ] Performance benchmarks
-- [ ] Additional example workflows
+- [ ] Enhanced error handling and user feedback
+- [ ] Command-line argument validation improvements
 
 ### Medium Term
-- [ ] Web UI companion
-- [ ] Plugin system
-- [ ] Configuration file support
+- [ ] Advanced filtering and task selection options
+- [ ] Task dependency management
+- [ ] Real-time task monitoring dashboard
 
 ### Long Term
 - [ ] Distributed task execution
@@ -162,5 +187,9 @@ Target coverage metrics:
 - ✅ Security scanning
 - ✅ Multi-Python version support
 - ✅ Cross-platform compatibility
+- ✅ GitHub issue templates for community support
+- ✅ Structured project layout with src/ pattern
+- ✅ Development workflow automation (Makefile, pre-commit hooks)
+- ✅ Version management and release automation
 
 The package is ready for distribution and production use.
