@@ -10,7 +10,7 @@ def main():
     print("Starting TaskPanel with example tasks...")
 
     try:
-        taskpanel.run(csv_path="tasks.csv", max_workers=4, title="Example Workflow")
+        taskpanel.run(workflow_path="tasks.yaml", max_workers=4, title="Example Workflow")
     except FileNotFoundError as e:
         print(f"Error: Task file not found - {e}")
     except taskpanel.TaskLoadError as e:

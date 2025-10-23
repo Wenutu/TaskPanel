@@ -163,7 +163,6 @@ These templates ensure consistent, high-quality issue reporting and help maintai
 ## 🎯 Future Enhancements
 
 ### Short Term
-- [ ] Windows support testing
 - [ ] Enhanced error handling and user feedback
 - [ ] Command-line argument validation improvements
 

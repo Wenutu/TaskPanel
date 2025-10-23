@@ -1,0 +1,204 @@
+steps:
+- Checkout
+- Build
+- Test
+- Deploy
+- Checkout_Alt
+- Build_Alt
+- Test_Alt
+tasks:
+- name: Task-A
+  description: "Version: 1.2.3\nBranch: main \nOwner: Alice"
+  steps:
+    Deploy: ./scripts/3_test.sh Task-A
+    Checkout_Alt: ./scripts/4_deploy.sh Task-A
+    Build_Alt: ./scripts/1_checkout.sh Task-A
+    Test_Alt: ./scripts/2_build.sh Task-A
+- name: Task-B
+  description: 'Version:v1.0.0
+
+    Branch: main'
+  steps:
+    Checkout: ./scripts/1_checkout.sh Task-B
+    Build: ./scripts/2_build.sh Task-B
+    Test: ./scripts/3_test.sh Task-B
+    Deploy: ./scripts/4_deploy.sh Task-B
+    Checkout_Alt: ./scripts/1_checkout.sh Task-B
+    Build_Alt: ./scripts/2_build.sh Task-B
+    Test_Alt: ./scripts/3_test.sh Task-B
+- name: Task-D
+  description: 'Version:v1.0.0
+
+    Branch: main'
+  steps:
+    Checkout: ./scripts/1_checkout.sh Task-D
+    Test: ./scripts/3_test.sh Task-D
+    Deploy: ./scripts/4_deploy.sh Task-D
+    Checkout_Alt: ./scripts/1_checkout.sh Task-D
+    Build_Alt: ./scripts/2_build.sh Task-D
+    Test_Alt: ./scripts/3_test.sh Task-D
+- name: Task-E
+  description: 'Version:v1.0.0
+
+    Branch: main'
+  steps:
+    Checkout: ./scripts/1_checkout.sh Task-E
+    Build: ./scripts/2_build.sh Task-E
+    Test: ./scripts/3_test.sh Task-E
+    Deploy: ./scripts/4_deploy.sh Task-E
+    Checkout_Alt: ./scripts/1_checkout.sh Task-E
+    Build_Alt: ./scripts/2_build.sh Task-E
+    Test_Alt: ./scripts/3_test.sh Task-E
+- name: Task-F
+  description: 'Version:v1.0.0
+
+    Branch: main'
+  steps:
+    Checkout: ./scripts/1_checkout.sh Task-F
+    Build: ./scripts/2_build.sh Task-F
+    Test: ./scripts/3_test.sh Task-F
+    Deploy: ./scripts/4_deploy.sh Task-F
+    Checkout_Alt: ./scripts/1_checkout.sh Task-F
+    Build_Alt: ./scripts/2_build.sh Task-F
+    Test_Alt: ./scripts/3_test.sh Task-F
+- name: Task-G
+  description: 'Version:v1.0.0
+
+    Branch: main'
+  steps:
+    Checkout: ./scripts/1_checkout.sh Task-G
+    Build: ./scripts/2_build.sh Task-G
+    Test: ./scripts/3_test.sh Task-G
+    Deploy: ./scripts/4_deploy.sh Task-G
+    Checkout_Alt: ./scripts/1_checkout.sh Task-G
+    Build_Alt: ./scripts/2_build.sh Task-G
+    Test_Alt: ./scripts/3_test.sh Task-G
+- name: Task-H
+  description: 'Version:v1.0.0
+
+    Branch: main'
+  steps:
+    Checkout: ./scripts/1_checkout.sh Task-H
+    Build: ./scripts/2_build.sh Task-H
+    Test: ./scripts/3_test.sh Task-H
+    Deploy: ./scripts/4_deploy.sh Task-H
+- name: Task-I
+  description: 'Version:v1.0.0
+
+    Branch: main'
+  steps:
+    Checkout: ./scripts/1_checkout.sh Task-I
+    Build: ./scripts/2_build.sh Task-I
+    Test: ./scripts/3_test.sh Task-I
+    Deploy: ./scripts/4_deploy.sh Task-I
+- name: Task-J
+  description: 'Version:v1.0.0
+
+    Branch: main'
+  steps:
+    Checkout: ./scripts/1_checkout.sh Task-J
+    Build: ./scripts/2_build.sh Task-J
+    Test: ./scripts/3_test.sh Task-J
+    Deploy: ./scripts/4_deploy.sh Task-J
+- name: Task-K
+  description: 'Version:v2.0.0
+
+    Branch: main'
+  steps:
+    Checkout: ./scripts/1_checkout.sh Task-K
+    Build: ./scripts/2_build.sh Task-K
+    Test: ./scripts/3_test.sh Task-K
+    Deploy: ./scripts/4_deploy.sh Task-K
+- name: Task-L
+  description: 'Version:v2.0.0
+
+    Branch: main'
+  steps:
+    Checkout: ./scripts/1_checkout.sh Task-L
+    Build: ./scripts/2_build.sh Task-L
+    Test: ./scripts/3_test.sh Task-L
+    Deploy: ./scripts/4_deploy.sh Task-L
+- name: Task-M
+  description: 'Version:v2.0.0
+
+    Branch: main'
+  steps:
+    Checkout: ./scripts/1_checkout.sh Task-M
+    Build: ./scripts/2_build.sh Task-M
+    Test: ./scripts/3_test.sh Task-M
+    Deploy: ./scripts/4_deploy.sh Task-M
+- name: Task-N
+  description: 'Version:v2.0.0
+
+    Branch: main'
+  steps:
+    Checkout: ./scripts/1_checkout.sh Task-N
+    Build: ./scripts/2_build.sh Task-N
+    Test: ./scripts/3_test.sh Task-N
+    Deploy: ./scripts/4_deploy.sh Task-N
+- name: Task-O
+  description: 'Version:v2.0.0
+
+    Branch: main'
+  steps:
+    Checkout: ./scripts/1_checkout.sh Task-O
+    Build: ./scripts/2_build.sh Task-O
+    Test: ./scripts/3_test.sh Task-O
+    Deploy: ./scripts/4_deploy.sh Task-O
+- name: Task-P
+  description: 'Version:v2.0.0
+
+    Branch: main'
+  steps:
+    Checkout: ./scripts/1_checkout.sh Task-P
+    Build: ./scripts/2_build.sh Task-P
+    Test: ./scripts/3_test.sh Task-P
+    Deploy: ./scripts/4_deploy.sh Task-P
+- name: Task-Q
+  description: 'Version:v2.0.0
+
+    Branch: main'
+  steps:
+    Checkout: ./scripts/1_checkout.sh Task-Q
+    Build: ./scripts/2_build.sh Task-Q
+    Test: ./scripts/3_test.sh Task-Q
+    Deploy: ./scripts/4_deploy.sh Task-Q
+- name: Task-R
+  description: 'Version:v2.0.0
+
+    Branch: main'
+  steps:
+    Checkout: ./scripts/1_checkout.sh Task-R
+    Build: ./scripts/2_build.sh Task-R
+    Test: ./scripts/3_test.sh Task-R
+    Deploy: ./scripts/4_deploy.sh Task-R
+- name: Task-S
+  description: 'Version:v2.0.0
+
+    Branch: main'
+  steps:
+    Checkout: ./scripts/1_checkout.sh Task-S
+    Build: ./scripts/2_build.sh Task-S
+    Test: ./scripts/3_test.sh Task-S
+    Deploy: ./scripts/4_deploy.sh Task-S
+- name: Task-T
+  description: 'Version:v2.0.0
+
+    Branch: main'
+  steps:
+    Checkout: ./scripts/1_checkout.sh Task-T
+    Build: ./scripts/2_build.sh Task-T
+    Test: ./scripts/3_test.sh Task-T
+    Deploy: ./scripts/4_deploy.sh Task-T
+- name: Task-U
+  description: 'Version:v2.0.0
+
+    Branch: main'
+  steps:
+    Checkout: ./scripts/1_checkout.sh Task-U
+    Build: ./scripts/2_build.sh Task-U
+    Test: ./scripts/3_test.sh Task-U
+    Deploy: ./scripts/4_deploy.sh Task-U
+- name: Task-V
+  info: Version:v2.0.0
+  steps: {}

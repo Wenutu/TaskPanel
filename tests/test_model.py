@@ -15,7 +15,7 @@ import shutil
 from pathlib import Path
 import time
 from concurrent.futures import ThreadPoolExecutor
-
+from unittest.mock import patch, MagicMock
 
 # Add the src directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -509,3 +509,246 @@ class TestModel(unittest.TestCase):
                     self.assertEqual(step.status, Status.PENDING)
 
         self.assertGreater(total_steps, 0, "Should have at least one valid step")
+
+    def test_load_tasks_from_yaml_success(self):
+        """Test successful loading of tasks from a valid YAML."""
+        yaml_path = Path(self.test_dir) / "tasks.yaml"
+        yaml_content = (
+            "steps: [Build, Test]\n"
+            "tasks:\n"
+            "  - name: Task Y\n"
+            "    info: Desc\n"
+            "    steps:\n"
+            "      Build: \"echo build\"\n"
+            "      Test: \"echo test\"\n"
+            "  - name: Task Z\n"
+            "    description: ZZZ\n"
+            "    steps:\n"
+            "      Build: \"echo b2\"\n"
+        )
+        yaml_path.write_text(yaml_content, encoding="utf-8")
+
+        task_model = TaskModel(str(yaml_path))
+        task_model.load_tasks()  # auto-detect YAML
+
+        self.assertEqual(len(task_model.tasks), 2)
+        self.assertEqual(task_model.dynamic_header[:2], ["TaskName", "Description"])
+        self.assertEqual(task_model.dynamic_header[2:], ["Build", "Test"])
+        self.assertEqual(task_model.tasks[0].name, "Task Y")
+        self.assertEqual([s.command for s in task_model.tasks[0].steps if s], ["echo build", "echo test"])
+        # Task Z 缺少 Test，应为 None
+        self.assertIsNone(task_model.tasks[1].steps[1])
+
+    # --- New YAML strictness tests ---
+
+    def test_yaml_strict_top_level_keys(self):
+        """Only 'steps' and 'tasks' allowed at YAML top-level."""
+        try:
+            import yaml  # Skip if PyYAML not present
+        except ImportError:
+            self.skipTest("PyYAML not installed; skipping YAML strict tests")
+
+        ypath = Path(self.test_dir) / "bad_top.yaml"
+        ypath.write_text(
+            "meta: {}\nsteps: [A]\ntasks:\n  - name: T\n    steps:\n      A: \"echo a\"\n",
+            encoding="utf-8",
+        )
+        tm = TaskModel(str(ypath))
+        with self.assertRaises(TaskLoadError):
+            tm.load_tasks()
+
+    def test_yaml_strict_task_keys_and_types(self):
+        """Task keys limited to name/info/description/steps; step commands must be strings."""
+        try:
+            import yaml
+        except ImportError:
+            self.skipTest("PyYAML not installed; skipping YAML strict tests")
+
+        # extra task key should fail
+        y1 = Path(self.test_dir) / "bad_task_key.yaml"
+        y1.write_text(
+            "steps: [A]\n"
+            "tasks:\n"
+            "  - name: T\n"
+            "    owner: Bob\n"  # Unsupported key
+            "    steps:\n"
+            "      A: \"echo a\"\n",
+            encoding="utf-8",
+        )
+        with self.assertRaises(TaskLoadError):
+            TaskModel(str(y1)).load_tasks()
+
+        # non-string step command should fail
+        y2 = Path(self.test_dir) / "bad_step_type.yaml"
+        y2.write_text(
+            "steps: [A,B]\n"
+            "tasks:\n"
+            "  - name: T\n"
+            "    steps:\n"
+            "      A: 123\n"      # Non-string value
+            "      B: \"echo b\"\n",
+            encoding="utf-8",
+        )
+        with self.assertRaises(TaskLoadError):
+            TaskModel(str(y2)).load_tasks()
+
+    def test_yaml_multiline_description_loaded_into_info(self):
+        """Multiline description/info should be loaded into Task.info."""
+        try:
+            import yaml
+        except ImportError:
+            self.skipTest("PyYAML not installed; skipping YAML tests")
+
+        y3 = Path(self.test_dir) / "desc.yaml"
+        y3.write_text(
+            "steps: [S]\n"
+            "tasks:\n"
+            "  - name: T\n"
+            "    description: |\n"
+            "      Line1\n"
+            "      Line2\n"
+            "    steps:\n"
+            "      S: \"echo s\"\n",
+            encoding="utf-8",
+        )
+        tm = TaskModel(str(y3))
+        tm.load_tasks()
+        self.assertEqual(len(tm.tasks), 1)
+        self.assertEqual(tm.tasks[0].name, "T")
+        self.assertIn("Line1", tm.tasks[0].info)
+        self.assertIn("Line2", tm.tasks[0].info)
+
+    # --- New: _apply_saved_state_to_task structure mismatch ---
+    def test_apply_saved_state_structure_mismatch(self):
+        """When structure hash mismatches, saved state is ignored."""
+        from taskpanel.model import Task, Step
+        tm = TaskModel(str(self.csv_path))
+        # Build a single-task model
+        uid = tm._generate_task_uid("T", "I")
+        log_dir = Path(self.test_dir) / ".tasks.csv.logs"
+        log_dir.mkdir(exist_ok=True)
+        step = Step("echo a", str(log_dir / "a.out"), str(log_dir / "a.err"), uid, 0)
+        task = Task(1, uid, "T", "I", [step], tm._generate_structure_hash(["echo a"]))
+        tm.tasks = [task]
+        # Apply a saved state with different structure_hash
+        tm._apply_saved_state_to_task(task, {"structure_hash": "DIFF", "steps": [{"status": "SUCCESS"}]})
+        self.assertEqual(task.steps[0].status, Status.PENDING)
+
+    # --- New: _apply_saved_state_to_task interrupted resume path ---
+    def test_apply_saved_state_interrupted(self):
+        """Interrupted (RUNNING/KILLED) step should trigger partial restore only before the point."""
+        from taskpanel.model import Task, Step
+        tm = TaskModel(str(self.csv_path))
+        uid = tm._generate_task_uid("T", "I")
+        ld = Path(self.test_dir) / ".tasks.csv.logs"
+        ld.mkdir(exist_ok=True)
+        s0 = Step("echo a", str(ld / "0.out"), str(ld / "0.err"), uid, 0)
+        s1 = Step("echo b", str(ld / "1.out"), str(ld / "1.err"), uid, 1)
+        task = Task(1, uid, "T", "I", [s0, s1], tm._generate_structure_hash(["echo a", "echo b"]))
+        # Saved: first success, second running -> interrupted_at = 1
+        saved = {"structure_hash": task.structure_hash, "steps": [{"status": "SUCCESS"}, {"status": "RUNNING"}]}
+        tm._apply_saved_state_to_task(task, saved)
+        self.assertEqual(task.steps[0].status, Status.SUCCESS)
+        self.assertEqual(task.steps[1].status, Status.PENDING)  # interrupted step stays/reset to PENDING
+
+    # --- New: _resume_state with corrupt state file ---
+    def test_resume_state_corrupt_file(self):
+        """Corrupt state file should be handled gracefully."""
+        # Write CSV and corrupt state file
+        self._create_csv("TaskName,Info,Cmd\nT,Info,echo x\n")
+        tm = TaskModel(str(self.csv_path))
+        # Create corrupt state file where loader expects it
+        tm.state_file_path.write_text("{ invalid json", encoding="utf-8")
+        # Should not raise
+        tm.load_tasks_from_csv()
+        self.assertEqual(len(tm.tasks), 1)
+
+    # --- New: _kill_process_group ProcessLookupError path ---
+    def test_kill_process_group_processlookup(self):
+        """ProcessLookupError during kill should be handled."""
+        from types import SimpleNamespace
+        tm = TaskModel(str(self.csv_path))
+        fake_proc = SimpleNamespace(pid=12345, poll=lambda: None, wait=lambda timeout=None: None)
+        with patch("taskpanel.model.os.getpgid", side_effect=ProcessLookupError), \
+             patch("taskpanel.model.os.killpg") as mock_kill:
+            tm._kill_process_group(0, 0, fake_proc)
+        self.assertFalse(mock_kill.called)
+
+    # --- New: _kill_process_group TimeoutExpired path ---
+    def test_kill_process_group_timeoutexpired(self):
+        """TimeoutExpired during kill escalates to SIGKILL."""
+        import subprocess as sp
+        from types import SimpleNamespace
+        tm = TaskModel(str(self.csv_path))
+        class FakeProc:
+            pid = 123
+            def poll(self): return None
+            def wait(self, timeout=None): raise sp.TimeoutExpired(cmd="x", timeout=0.1)
+        with patch("taskpanel.model.os.getpgid", return_value=999), \
+             patch("taskpanel.model.os.killpg") as mock_kill:
+            tm._kill_process_group(0, 0, FakeProc())
+        self.assertGreaterEqual(mock_kill.call_count, 2)  # SIGTERM then SIGKILL
+
+    # --- New: run_task_row failure marks next steps SKIPPED ---
+    def test_run_task_row_failure_marks_skipped(self):
+        """Non-zero return code should mark later steps as SKIPPED."""
+        from taskpanel.model import Task, Step
+        self._create_csv("TaskName,Info,Cmd1,Cmd2\nT,Info,echo a,echo b\n")
+        tm = TaskModel(str(self.csv_path))
+        tm.load_tasks_from_csv()
+        # Patch Popen to return returncode=1 (failure)
+        class FakeP:
+            returncode = 1
+            def __init__(self, *a, **k): pass
+            def wait(self): return None
+        with patch("taskpanel.model.subprocess.Popen", return_value=FakeP()):
+            tm.run_task_row(0, tm.tasks[0].run_counter, 0)
+        self.assertEqual(tm.tasks[0].steps[0].status, Status.FAILED)
+        # Next step becomes SKIPPED
+        self.assertEqual(tm.tasks[0].steps[1].status, Status.SKIPPED)
+
+    # --- New: run_task_row subprocess raises exception ---
+    def test_run_task_row_subprocess_error(self):
+        """Popen raising FileNotFoundError should mark FAILED."""
+        from taskpanel.model import Task, Step
+        self._create_csv("TaskName,Info,Cmd\nT,Info,echo a\n")
+        tm = TaskModel(str(self.csv_path))
+        tm.load_tasks_from_csv()
+        with patch("taskpanel.model.subprocess.Popen", side_effect=FileNotFoundError("no bin")):
+            tm.run_task_row(0, tm.tasks[0].run_counter, 0)
+        self.assertEqual(tm.tasks[0].steps[0].status, Status.FAILED)
+
+    # --- New: rerun_task_from_step removes log files and resets statuses ---
+    def test_rerun_task_from_step_removes_logs(self):
+        """Rerun should clear logs and reset to PENDING."""
+        from taskpanel.model import Task, Step
+        self._create_csv("TaskName,Info,Cmd1,Cmd2\nT,Info,echo a,echo b\n")
+        tm = TaskModel(str(self.csv_path))
+        tm.load_tasks_from_csv()
+        # Prepare logs for step 1
+        step1 = tm.tasks[0].steps[1]
+        Path(step1.log_path_stdout).write_text("o")
+        Path(step1.log_path_stderr).write_text("e")
+        # Ensure status not PENDING
+        step1.status = Status.FAILED
+        exec_mock = MagicMock()
+        tm.rerun_task_from_step(exec_mock, 0, 1)
+        self.assertFalse(os.path.exists(step1.log_path_stdout))
+        self.assertFalse(os.path.exists(step1.log_path_stderr))
+        self.assertEqual(step1.status, Status.PENDING)
+        self.assertTrue(exec_mock.submit.called)
+
+    # --- New: kill_task_row marks KILLED and SKIPPED ---
+    def test_kill_task_row_marks_killed_and_skipped(self):
+        """Killing a running row should mark current as KILLED and next PENDING as SKIPPED."""
+        from taskpanel.model import Task, Step
+        self._create_csv("TaskName,Info,Cmd1,Cmd2\nT,Info,sleep 1,echo z\n")
+        tm = TaskModel(str(self.csv_path))
+        tm.load_tasks_from_csv()
+        # Simulate running in step 0
+        tm.tasks[0].steps[0].status = Status.RUNNING
+        tm.tasks[0].steps[0].process = MagicMock()
+        with patch.object(tm, "_kill_process_group") as mock_kill:
+            tm.kill_task_row(0)
+        self.assertEqual(tm.tasks[0].steps[0].status, Status.KILLED)
+        self.assertEqual(tm.tasks[0].steps[1].status, Status.SKIPPED)

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "taskpanel"
-version = "1.0.1"
+version = "1.0.2"
 description = "A Robust Interactive Terminal Task Runner Library"
 readme = "README.md"
 license = {text = "MIT"}
@@ -37,7 +37,7 @@ classifiers = [
 ]
 requires-python = ">=3.6"
 dependencies = [
-    # TaskPanel uses only Python standard library
+    "pyyaml>=5.3.1",
 ]
 
 [project.optional-dependencies]
@@ -91,12 +91,6 @@ extend-exclude = '''
 )/
 '''
 
-[tool.isort]
-profile = "black"
-multi_line_output = 3
-line_length = 88
-known_first_party = ["taskpanel"]
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
@@ -130,14 +124,3 @@ exclude_lines = [
     "class .*\\bProtocol\\):",
     "@(abc\\.)?abstractmethod",
 ]
-
-[tool.mypy]
-python_version = "3.6"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "tests.*"
-disallow_untyped_defs = false

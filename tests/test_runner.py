@@ -68,7 +68,7 @@ class TestRunner(unittest.TestCase):
         params = list(sig.parameters.keys())
 
         # Check required parameters
-        self.assertIn("csv_path", params)
+        self.assertIn("workflow_path", params)
         self.assertIn("max_workers", params)
         self.assertIn("title", params)
 
@@ -270,7 +270,7 @@ class TestRunner(unittest.TestCase):
 
         with patch("curses.curs_set"), patch(
             "taskpanel.runner.setup_colors"
-        ), patch.object(runner.TaskModel, "load_tasks_from_csv"):
+        ), patch.object(runner.TaskModel, "load_tasks"):
             mock_stdscr = MagicMock()
             mock_stdscr.nodelay = MagicMock()
 
@@ -291,7 +291,7 @@ class TestRunner(unittest.TestCase):
             self.skipTest("runner module not available")
 
         with patch("taskpanel.runner.setup_colors"), patch.object(
-            runner.TaskModel, "load_tasks_from_csv"
+            runner.TaskModel, "load_tasks"
         ):
             mock_stdscr = MagicMock()
             controller = runner.AppController(mock_stdscr, self.csv_path, 1, "Test")
@@ -419,7 +419,7 @@ class TestRunner(unittest.TestCase):
         mock_setup_colors.return_value = None
 
         # Mock TaskModel to avoid file operations
-        with patch.object(runner.TaskModel, "load_tasks_from_csv") as mock_load, patch(
+        with patch.object(runner.TaskModel, "load_tasks") as mock_load, patch(
             "taskpanel.runner.draw_ui"
         ) as mock_draw_ui, patch("time.sleep") as mock_sleep:
             mock_load.return_value = None
@@ -469,7 +469,7 @@ class TestRunner(unittest.TestCase):
         mock_setup_colors.return_value = None
 
         # Mock TaskModel to avoid file operations
-        with patch.object(runner.TaskModel, "load_tasks_from_csv") as mock_load:
+        with patch.object(runner.TaskModel, "load_tasks") as mock_load:
             mock_load.return_value = None
 
             try:
@@ -536,7 +536,7 @@ class TestRunner(unittest.TestCase):
         mock_wrapper.side_effect = mock_wrapper_func
 
         # Mock other dependencies that might cause issues
-        with patch.object(runner.TaskModel, "load_tasks_from_csv") as mock_load, patch(
+        with patch.object(runner.TaskModel, "load_tasks") as mock_load, patch(
             "taskpanel.runner.draw_ui"
         ) as mock_draw_ui, patch("threading.RLock") as mock_rlock:
             mock_load.return_value = None
@@ -596,7 +596,7 @@ class TestRunner(unittest.TestCase):
         init_params = list(init_sig.parameters.keys())
 
         # Should have self, stdscr, csv_path, max_workers, title
-        expected_params = ["self", "stdscr", "csv_path", "max_workers", "title"]
+        expected_params = ["self", "stdscr", "workflow_path", "max_workers", "title"]
         for param in expected_params:
             self.assertIn(param, init_params, f"__init__ should have {param} parameter")
 
@@ -609,7 +609,7 @@ class TestRunner(unittest.TestCase):
 
         # Create a mock TaskModel instance
         mock_model_instance = MagicMock()
-        mock_model_instance.load_tasks_from_csv.return_value = None
+        mock_model_instance.load_tasks.return_value = None
         mock_task_model.return_value = mock_model_instance
 
         # Mock wrapper to completely bypass curses
@@ -720,3 +720,204 @@ class TestRunner(unittest.TestCase):
             )
             cls = getattr(runner, class_name)
             self.assertTrue(callable(cls), f"{class_name} should be callable (class)")
+
+    @patch("taskpanel.runner.curses.wrapper")
+    @patch("taskpanel.runner.os.name", "posix")
+    def test_run_with_yaml_file(self, mock_wrapper):
+        """Test that run function accepts YAML workflow files."""
+        if run is None:
+            self.skipTest("run function not available")
+
+        # Create a temporary YAML workflow
+        with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+            yaml_path = f.name
+            f.write(
+                "steps: [Step1, Step2]\n"
+                "tasks:\n"
+                "  - name: 'Y Task'\n"
+                "    info: 'Info'\n"
+                "    steps:\n"
+                "      Step1: \"echo one\"\n"
+                "      Step2: \"echo two\"\n"
+            )
+
+        mock_wrapper.side_effect = KeyboardInterrupt()
+
+        try:
+            run(yaml_path, max_workers=1, title="YAML")
+        except KeyboardInterrupt:
+            pass
+        finally:
+            try:
+                os.unlink(yaml_path)
+            except OSError:
+                pass
+
+    def test_app_controller_search_filter_invalid_regex(self):
+        """Invalid regex in search should not crash and should ignore filter."""
+        if runner is None:
+            self.skipTest("runner module not available")
+
+        with patch("curses.curs_set"), patch("taskpanel.runner.setup_colors"), patch.object(
+            runner.TaskModel, "load_tasks"
+        ):
+            mock_stdscr = MagicMock()
+            controller = runner.AppController(mock_stdscr, "/tmp/no.csv", 1, "T")
+            # Inject model tasks
+            task1 = MagicMock()
+            task1.name = "Alpha"
+            task2 = MagicMock()
+            task2.name = "Beta"
+            controller.model.tasks = [task1, task2]
+            # Set invalid regex
+            controller.search_query = "("
+            # Should not throw
+            controller._apply_search_filter()
+            # Fallback to no filter or empty result; at least not crash
+            self.assertIsInstance(controller.filtered_task_indices, list)
+
+    def test_app_controller_toggle_debug_and_resize(self):
+        """Toggle debug changes layout flag; resize handler marks UI dirty."""
+        if runner is None:
+            self.skipTest("runner module not available")
+
+        with patch("curses.curs_set"), patch("taskpanel.runner.setup_colors"), patch.object(
+            runner.TaskModel, "load_tasks"
+        ):
+            mock_stdscr = MagicMock()
+            c = runner.AppController(mock_stdscr, "/tmp/no.csv", 1, "T")
+            old = c.view_state.debug_panel_visible
+            c._handle_toggle_debug()
+            self.assertNotEqual(c.view_state.debug_panel_visible, old)
+            self.assertTrue(c.view_state.layout_dirty)
+
+            # Resize
+            c.ui_dirty = False
+            c._handle_resize()
+            self.assertTrue(c.ui_dirty)
+            self.assertTrue(c.view_state.layout_dirty)
+
+    def test_process_input_search_mode_typing_and_submit(self):
+        if runner is None:
+            self.skipTest("runner module not available")
+        with patch("curses.curs_set"), patch("taskpanel.runner.setup_colors"), patch.object(
+            runner.TaskModel, "load_tasks"
+        ):
+            stdscr = MagicMock()
+            # Provide sequential keys: enter search '/', type 'a', ENTER
+            inputs = [ord('/'), ord('a'), 10]
+            stdscr.getch.side_effect = inputs + [-1]
+            c = runner.AppController(stdscr, "/tmp/no.csv", 1, "T")
+            # Inject tasks to match query
+            c.model.tasks = [MagicMock(name="A"), MagicMock(name="B")]
+            # First key '/', enter search mode
+            c.process_input()
+            self.assertTrue(c.is_search_mode)
+            # Type 'a'
+            c.process_input()
+            self.assertEqual(c.search_query, "a")
+            # ENTER to exit search mode
+            c.process_input()
+            self.assertFalse(c.is_search_mode)
+
+    def test_process_input_backspace_and_escape(self):
+        if runner is None:
+            self.skipTest("runner module not available")
+        with patch("curses.curs_set"), patch("taskpanel.runner.setup_colors"), patch.object(
+            runner.TaskModel, "load_tasks"
+        ):
+            stdscr = MagicMock()
+            stdscr.getch.side_effect = [ord('/'), 127, 27, 27]  # '/', backspace, ESC(clear), ESC(exit)
+            c = runner.AppController(stdscr, "/tmp/no.csv", 1, "T")
+            c.search_query = "x"
+            # enter search mode
+            c.process_input()
+            c.is_search_mode = True
+            # backspace
+            c.process_input()
+            # ESC when query empty -> exit search mode after two ESC
+            c.search_query = "q"
+            c.process_input()  # clear query
+            self.assertEqual(c.search_query, "")
+            c.process_input()  # exit
+            self.assertFalse(c.is_search_mode)
+
+    def test_rerun_blocked_and_allowed(self):
+        if runner is None:
+            self.skipTest("runner module not available")
+        with patch("curses.curs_set"), patch("taskpanel.runner.setup_colors"), \
+             patch("taskpanel.runner.curses.flash") as mock_flash, \
+             patch.object(runner.TaskModel, "load_tasks"):
+            stdscr = MagicMock()
+            c = runner.AppController(stdscr, "/tmp/no.csv", 1, "T")
+            # Prepare one task with two steps
+            task = MagicMock()
+            # Blocked: selected step is None
+            task.steps = [None, None]
+            c.model.tasks = [task]
+            c.filtered_task_indices = [0]
+            c.view_state.selected_row = 0
+            c.view_state.selected_col = 0
+            c._handle_rerun()
+            self.assertTrue(mock_flash.called)
+
+            # Allowed: previous steps SUCCESS, selected step present
+            mock_flash.reset_mock()
+            from taskpanel.model import Step, Status
+            step0 = MagicMock()
+            step0.status = Status.SUCCESS
+            step1 = MagicMock()
+            step1.status = Status.PENDING
+            task.steps = [step0, step1]
+            c.view_state.selected_col = 1
+            with patch.object(c.model, "rerun_task_from_step") as mock_rerun:
+                c._handle_rerun()
+                mock_rerun.assert_called_once()
+
+    def test_start_initial_tasks_submits_resume(self):
+        if runner is None:
+            self.skipTest("runner module not available")
+        with patch("curses.curs_set"), patch("taskpanel.runner.setup_colors"), patch.object(
+            runner.TaskModel, "load_tasks"
+        ):
+            stdscr = MagicMock()
+            c = runner.AppController(stdscr, "/tmp/no.csv", 1, "T")
+            # Task with first SUCCESS then PENDING should trigger resume from step 1
+            from taskpanel.model import Status
+            step0 = MagicMock(); step0.status = Status.SUCCESS
+            step1 = MagicMock(); step1.status = Status.PENDING
+            task = MagicMock(); task.steps = [step0, step1]; task.name = "T"
+            c.model.tasks = [task]
+            with patch.object(c.executor, "submit") as mock_submit:
+                c.start_initial_tasks()
+                self.assertTrue(mock_submit.called)
+
+    def test_nav_right_updates_left_most_step(self):
+        if runner is None:
+            self.skipTest("runner module not available")
+        with patch("curses.curs_set"), patch("taskpanel.runner.setup_colors"), patch.object(
+            runner.TaskModel, "load_tasks"
+        ):
+            stdscr = MagicMock()
+            c = runner.AppController(stdscr, "/tmp/no.csv", 1, "T")
+            task = MagicMock(); task.steps = [1, 2]; c.model.tasks = [task]
+            c.filtered_task_indices = [0]
+            # Simulate layout with only 1 visible step
+            c.view_state.cached_layout = MagicMock(num_visible_steps=1, task_list_h=1)
+            c.view_state.selected_row = 0
+            c.view_state.selected_col = 0
+            c._handle_nav_right()
+            self.assertEqual(c.view_state.left_most_step, 1)
+
+    def test_nav_page_down(self):
+        if runner is None:
+            self.skipTest("runner module not available")
+        with patch("curses.curs_set"), patch("taskpanel.runner.setup_colors"), patch.object(
+            runner.TaskModel, "load_tasks"
+        ):
+            stdscr = MagicMock()
+            c = runner.AppController(stdscr, "/tmp/no.csv", 1, "T")
+            c.filtered_task_indices = list(range(10))
+            c.view_state.cached_layout = MagicMock(task_list_h=3)
+            c._handle_nav_page_down()
+            self.assertGreaterEqual(c.view_state.top_row, 0)

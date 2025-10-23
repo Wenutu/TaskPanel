@@ -28,13 +28,17 @@ TaskPanel is a professional-grade, terminal-based tool designed to run, monitor,
 - **Efficient UI**: Smart refresh mechanism for minimal CPU usage
 - **Debug Features**: Toggleable debug panel with detailed lifecycle information
 
+### New
+- **YAML Workflow Support**: Load workflows from YAML files with strict schema validation
+- **CSV → YAML Conversion**: Convert CSV workflows to YAML via CLI (requires PyYAML)
+
 ## Installation
 
 ```bash
 pip install taskpanel
 ```
 
-或从源码安装：
+or from source:
 
 ```bash
 git clone https://github.com/Wenutu/TaskPanel.git
@@ -42,25 +46,43 @@ cd TaskPanel
 pip install -e .
 ```
 
+> Note: UI runtime requires a POSIX-like OS (Linux/macOS).
+
 #### Quick Start
 
-1. **Create your task definition file** (`tasks.csv`):
-   ```csv
-   TaskName,Info,Checkout,Build,Test
-   MyApp,v1.0.0,./scripts/1_checkout.sh,./scripts/2_build.sh,./scripts/3_test.sh
-   ```
+1. Define your workflow
+   - CSV:
+     ```csv
+     TaskName,Info,Checkout,Build,Test
+     MyApp,v1.0.0,./scripts/1_checkout.sh,./scripts/2_build.sh,./scripts/3_test.sh
+     ```
+   - YAML:
+     ```yaml
+     steps: [Checkout, Build, Test]
+     tasks:
+       - name: MyApp
+         info: v1.0.0
+         steps:
+           Checkout: "./scripts/1_checkout.sh"
+           Build: "./scripts/2_build.sh"
+           Test: "./scripts/3_test.sh"
+     ```
 
-2. **Run from command line**:
+2. Run from command line
    ```bash
+   # CSV
    taskpanel tasks.csv
+
+   # YAML
+   taskpanel tasks.yaml
    ```
 
-3. **Or use as a Python library**:
+3. Or use as a Python library
    ```python
    import taskpanel
-   
+
    taskpanel.run(
-       csv_path="tasks.csv",
+       workflow_path="tasks.csv",  # or "tasks.yaml"
        max_workers=4,
        title="My Workflow"
    )
@@ -70,44 +92,88 @@ pip install -e .
 
 ```
 your_project/
-├── tasks.csv         # Task definitions
-├── scripts/          # Your workflow scripts
+├── tasks.csv         # or tasks.yaml
+├── scripts/
 │   ├── 1_checkout.sh
 │   ├── 2_build.sh
 │   ├── 3_test.sh
 │   └── 4_deploy.sh
-└── app.py           # Your main application (optional)
+└── app.py
 ```
 
 ## Task Definition Format
 
-Define your workflow in a CSV file with the **first row as headers**.
+Define your workflow using CSV or YAML. In both formats, each task has sequential steps.
 
-**Format**: `TaskName,Info,Step1Header,Step2Header,...`
+### CSV
+- Header row with at least: TaskName, Info
+- Subsequent columns are step names; each cell is a shell command (empty means no step)
 
-**Example `tasks.csv`:**
+Example:
 ```csv
 TaskName,Info,Checkout,Build,Test,Deploy
 WebApp,v1.2.0,./scripts/1_checkout.sh,./scripts/2_build.sh,./scripts/3_test.sh,./scripts/4_deploy.sh
 API-Server,v1.2.0,./scripts/1_checkout.sh,./scripts/2_build.sh --api,./scripts/3_test.sh --integration,./scripts/4_deploy.sh --api
 ```
 
-Each task (row) will be executed as a pipeline where steps run sequentially.
+### YAML (strict schema)
+Top-level keys:
+- steps: optional list of step names
+- tasks: required list of task objects
+
+Each task:
+- name: string (required)
+- info or description: string (optional; use description for multiline)
+- steps: mapping of step_name (string) to command (string, nullable)
+
+Example:
+```yaml
+steps: [Checkout, Build, Test, Deploy]  # optional; will be derived if omitted
+tasks:
+  - name: WebApp
+    info: v1.2.0
+    steps:
+      Checkout: "./scripts/1_checkout.sh"
+      Build: "./scripts/2_build.sh"
+      Test: "./scripts/3_test.sh"
+      Deploy: "./scripts/4_deploy.sh"
+  - name: API-Server
+    description: |
+      Version: v1.2.0
+      Owner: Bob
+    steps:
+      Checkout: "./scripts/1_checkout.sh"
+      Build: "./scripts/2_build.sh --api"
+      Test: "./scripts/3_test.sh --integration"
+      Deploy: "./scripts/4_deploy.sh --api"
+```
+
+Validation rules:
+- Only top-level keys steps and tasks are allowed
+- Only task keys name, info, description, steps are allowed
+- steps mapping must have string keys and string or null values
 
 ## Usage
 
 ### Command Line Interface
 
 ```bash
-# Basic usage
+# Basic usage (CSV or YAML)
 taskpanel tasks.csv
+taskpanel tasks.yaml
 
-# With options
+# Options
 taskpanel tasks.csv --workers 8 --title "My Build Pipeline"
 
-# Show help
-taskpanel --help
+# Convert CSV to YAML (requires PyYAML)
+taskpanel tasks.csv --to-yaml tasks.yaml
 ```
+
+--to-yaml notes:
+- Input must be a CSV file
+- Output YAML contains only steps and tasks at top level
+- Single-line Info becomes info; multiline Info becomes description
+- Empty step cells are omitted from a task’s steps mapping (still listed in top-level steps)
 
 ### Python Library
 
@@ -118,7 +184,7 @@ import taskpanel
 def main():
     try:
         taskpanel.run(
-            csv_path="tasks.csv",
+            workflow_path="tasks.csv",  # or "tasks.yaml"
             max_workers=4,
             title="My Workflow Runner"
         )
@@ -135,60 +201,32 @@ if __name__ == "__main__":
 
 | Key | Action |
 |-----|--------|
-| `↑` `↓` | Navigate between tasks |
-| `←` `→` | Navigate between columns |
-| `Home` / `End` | Jump to first/last task |
-| `PgUp` / `PgDn` | Scroll by page |
-| `r` | **Rerun** selected step and subsequent steps |
-| `k` | **Kill** currently running task |
-| `d` | Toggle debug panel |
-| `[` / `]` | Scroll output log |
-| `{` / `}` | Scroll debug log |
-| `q` | **Quit** application |
+| ↑ ↓ | Navigate tasks |
+| ← → | Navigate columns |
+| Home / End | Jump to first/last task |
+| PgUp / PgDn | Page scroll |
+| r | Rerun selected step and subsequent steps |
+| k | Kill currently running task |
+| d | Toggle debug panel |
+| [ / ] | Scroll output log |
+| { / } | Scroll debug log |
+| q | Quit |
 
 ## Project Architecture
 
-TaskPanel follows a clean Model-View-Controller (MVC) architecture:
-
-- **Model (`src/taskpanel/model.py`)**: Task execution, state management, and persistence
-- **View (`src/taskpanel/view.py`)**: Terminal UI rendering with curses
-- **Controller (`src/taskpanel/runner.py`)**: Event loop and user input handling
-- **CLI (`src/taskpanel/cli.py`)**: Command-line interface
-
-This separation ensures maintainability and testability.
+- Model (`src/taskpanel/model.py`): Task execution, state management, persistence
+- View (`src/taskpanel/view.py`): Terminal UI rendering with curses
+- Controller (`src/taskpanel/runner.py`): Event loop and user input handling
+- CLI (`src/taskpanel/cli.py`): Command-line interface
 
 ## Development
 
-### Setup Development Environment
-
 ```bash
-# Clone the repository
 git clone https://github.com/Wenutu/TaskPanel.git
 cd TaskPanel
-
-# Install in development mode
 pip install -e ".[dev]"
-
-# Or use make
+# or
 make install-dev
-```
-
-### Project Structure
-
-```
-TaskPanel/
-├── src/
-│   └── taskpanel/         # Main package
-│       ├── __init__.py    # Package entry point
-│       ├── cli.py         # Command-line interface
-│       ├── model.py       # Task execution logic
-│       ├── runner.py      # Main controller
-│       └── view.py        # Terminal UI
-├── tests/                 # Test suite
-├── scripts/               # Example scripts
-├── pyproject.toml         # Build configuration
-├── Makefile              # Development commands
-└── README.md             # This file
 ```
 
 ### Make Commands
@@ -199,26 +237,16 @@ TaskPanel/
 - `make build` - Build package
 - `make clean` - Clean build artifacts
 
-## Contributing
+## Compatibility
 
-Contributions are welcome! Please follow these steps:
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature-name`
-3. Make your changes
-4. Run tests: `make test`
-5. Submit a pull request
-
-Please ensure your code follows the project style and includes appropriate tests.
+- OS: POSIX-like only (Linux, macOS)
+- YAML: Parsing and conversion require PyYAML (`pip install pyyaml`)
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Links
-
-## Links
-
 - [PyPI Package](https://pypi.org/project/taskpanel/)
 - [GitHub Repository](https://github.com/Wenutu/TaskPanel)
 - [Latest Release](https://github.com/Wenutu/TaskPanel/releases/latest)

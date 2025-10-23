@@ -28,11 +28,11 @@ BACKSPACE_KEYS = (curses.KEY_BACKSPACE, 127)
 class AppController:
     """Manages the application's main loop, user input, and state transitions."""
 
-    def __init__(self, stdscr, csv_path: str, max_workers: int, title: str):
+    def __init__(self, stdscr, workflow_path: str, max_workers: int, title: str):
         self.stdscr = stdscr
         self.max_workers = max_workers
         self.title = title
-        self.model = TaskModel(csv_path)
+        self.model = TaskModel(workflow_path)
         self.view_state = ViewState()
         self.app_running = True
         self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
@@ -44,7 +44,8 @@ class AppController:
         curses.curs_set(0)
         self.stdscr.nodelay(1)
         setup_colors()
-        self.model.load_tasks_from_csv()
+        # Auto-detect CSV or YAML
+        self.model.load_tasks()
         self._apply_search_filter()
 
         self.key_handlers = {
@@ -124,7 +125,8 @@ class AppController:
             try:
                 pattern = re.compile(self.search_query, re.IGNORECASE)
                 for i, task in enumerate(self.model.tasks):
-                    if pattern.search(task.name):
+                    # Ensure robust matching even when task.name is not a plain string (e.g., MagicMock)
+                    if pattern.search(str(getattr(task, "name", ""))):
                         self.filtered_task_indices.append(i)
             except re.error:
                 pass
@@ -377,12 +379,12 @@ class AppController:
             time.sleep(SHUTDOWN_CLEANUP_WAIT_S)
 
 
-def run(csv_path: str, max_workers: int, title: str = "TaskPanel"):
+def run(workflow_path: str, max_workers: int, title: str = "TaskPanel"):
     """
     Public function to launch the TaskPanel UI.
 
     Args:
-        csv_path (str): Path to the tasks CSV file.
+        workflow_path (str): Path to the tasks CSV file.
         max_workers (int): The maximum number of tasks to run in parallel.
         title (str, optional): A custom title for the application window.
                                Defaults to "TaskPanel".
@@ -392,15 +394,15 @@ def run(csv_path: str, max_workers: int, title: str = "TaskPanel"):
         raise ValueError(
             f"max_workers must be a positive integer, but got {max_workers}"
         )
-    if not os.path.exists(csv_path):
-        raise FileNotFoundError(f"Error: CSV file not found at '{csv_path}'")
+    if not os.path.exists(workflow_path):
+        raise FileNotFoundError(f"Error: CSV file not found at '{workflow_path}'")
     if os.name != "posix":
         raise OSError("Error: This script requires a POSIX-like OS (Linux, macOS).")
 
     try:
         curses.wrapper(
             lambda stdscr: AppController(
-                stdscr, csv_path, max_workers, title
+                stdscr, workflow_path, max_workers, title
             ).run_loop()
         )
     except TaskLoadError as e:

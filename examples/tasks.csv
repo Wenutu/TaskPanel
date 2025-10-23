@@ -1,7 +1,7 @@
 TaskName,Description,Checkout,Build,Test,Deploy,Checkout_Alt,Build_Alt,Test_Alt
-Task-A,"Version: 1.2.3 && Task Task Task
+Task-A,"Version: 1.2.3
 Branch: main 
-Owner: Alice",,,./scripts/3_test.sh Task-A,./scripts/4_deploy.sh Task-A,./scripts/1_checkout.sh Task-A,./scripts/2_build.sh Task-A,./scripts/3_test.sh Task-A,./scripts/4_deploy.sh Task-A
+Owner: Alice",,,,./scripts/3_test.sh Task-A,./scripts/4_deploy.sh Task-A,./scripts/1_checkout.sh Task-A,./scripts/2_build.sh Task-A,./scripts/3_test.sh Task-A,./scripts/4_deploy.sh Task-A
 Task-B,"Version:v1.0.0
 Branch: main",./scripts/1_checkout.sh Task-B,./scripts/2_build.sh Task-B,./scripts/3_test.sh Task-B,./scripts/4_deploy.sh Task-B,./scripts/1_checkout.sh Task-B,./scripts/2_build.sh Task-B,./scripts/3_test.sh Task-B,./scripts/4_deploy.sh Task-B
 Task-D,"Version:v1.0.0

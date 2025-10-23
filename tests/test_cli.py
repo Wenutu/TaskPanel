@@ -58,7 +58,7 @@ class TestCLI(unittest.TestCase):
 
         mock_run.assert_called_once()
         args, kwargs = mock_run.call_args
-        self.assertEqual(kwargs.get("csv_path"), self.csv_path)
+        self.assertEqual(kwargs.get("workflow_path"), self.csv_path)
         self.assertEqual(kwargs.get("title"), "TaskPanel")
         # Default workers depends on os.cpu_count(), so we just check it's a positive integer
         self.assertIsInstance(kwargs.get("max_workers"), int)
@@ -79,7 +79,7 @@ class TestCLI(unittest.TestCase):
             cli.main()
 
         mock_run.assert_called_once_with(
-            csv_path=self.csv_path, max_workers=10, title="My Project"
+            workflow_path=self.csv_path, max_workers=10, title="My Project"
         )
 
     @patch("sys.exit")
@@ -152,7 +152,7 @@ class TestCLI(unittest.TestCase):
             cli.main()
 
         mock_run.assert_called_once_with(
-            csv_path=self.csv_path, max_workers=5, title="Short Title"
+            workflow_path=self.csv_path, max_workers=5, title="Short Title"
         )
 
     def test_cli_workers_type_validation(self):
@@ -175,7 +175,7 @@ class TestCLI(unittest.TestCase):
             cli.main()
 
         mock_run.assert_called_once_with(
-            csv_path=self.csv_path,
+            workflow_path=self.csv_path,
             max_workers=os.cpu_count(),
             title=long_title,
         )
@@ -232,7 +232,7 @@ class TestCLI(unittest.TestCase):
 
             mock_run.assert_called_once()
             args, kwargs = mock_run.call_args
-            self.assertEqual(kwargs.get("csv_path"), unicode_path)
+            self.assertEqual(kwargs.get("workflow_path"), unicode_path)
         except UnicodeEncodeError:
             self.skipTest("Filesystem doesn't support Unicode filenames")
 
@@ -342,7 +342,7 @@ class TestCLI(unittest.TestCase):
             cli.main()
 
         mock_run.assert_called_once_with(
-            csv_path=self.csv_path, max_workers=2, title="Test"
+            workflow_path=self.csv_path, max_workers=2, title="Test"
         )
 
     def test_cli_error_message_format(self):
@@ -364,3 +364,188 @@ class TestCLI(unittest.TestCase):
             stderr_output = captured_stderr.getvalue()
             self.assertIn("Error:", stderr_output)
             self.assertIn("not found", stderr_output)
+
+    @patch("taskpanel.cli.run")
+    def test_cli_with_yaml_file(self, mock_run):
+        """Test CLI with YAML workflow file."""
+        yaml_path = os.path.join(self.test_dir, "tasks.yaml")
+        with open(yaml_path, "w", encoding="utf-8") as f:
+            f.write(
+                "steps: [A, B]\n"
+                "tasks:\n"
+                "  - name: T1\n"
+                "    info: I1\n"
+                "    steps:\n"
+                "      A: \"echo a\"\n"
+                "      B: \"echo b\"\n"
+            )
+
+        test_args = ["taskpanel", yaml_path, "-w", "3", "-t", "YAML Title"]
+        with patch.object(sys, "argv", test_args):
+            cli.main()
+
+        mock_run.assert_called_once_with(
+            workflow_path=yaml_path, max_workers=3, title="YAML Title"
+        )
+
+    # --- New tests for CSV -> YAML conversion ---
+
+    @patch("sys.exit")
+    @patch("sys.stderr")
+    def test_cli_to_yaml_rejects_non_csv_input(self, mock_stderr, mock_exit):
+        """--to-yaml should reject non-CSV input."""
+        dummy_yaml_in = os.path.join(self.test_dir, "in.yaml")
+        with open(dummy_yaml_in, "w", encoding="utf-8") as f:
+            f.write("steps: []\ntasks: []\n")
+
+        test_args = ["taskpanel", dummy_yaml_in, "--to-yaml", os.path.join(self.test_dir, "out.yaml")]
+        with patch.object(sys, "argv", test_args):
+            cli.main()
+
+        mock_exit.assert_called_with(1)
+        stderr_calls = [str(c) for c in mock_stderr.write.call_args_list]
+        self.assertTrue(any("requires a CSV input file" in s for s in stderr_calls))
+
+    def test_cli_to_yaml_conversion_success(self):
+        """CSV -> YAML conversion succeeds; multiline Info becomes description."""
+        try:
+            import yaml  # Needs PyYAML for validation
+        except ImportError:
+            self.skipTest("PyYAML not installed; skipping conversion test")
+
+        # Prepare CSV with multiline info
+        csv_in = os.path.join(self.test_dir, "convert.csv")
+        with open(csv_in, "w", encoding="utf-8") as f:
+            f.write("TaskName,Info,StepA,StepB\n")
+            f.write("T1,\"Line1\nLine2\",echo A,echo B\n")
+
+        out_yaml = os.path.join(self.test_dir, "out.yaml")
+        test_args = ["taskpanel", csv_in, "--to-yaml", out_yaml]
+        with patch.object(sys, "argv", test_args):
+            cli.main()
+
+        self.assertTrue(os.path.exists(out_yaml))
+        # Validate content structure and description field
+        with open(out_yaml, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        self.assertIsInstance(data, dict)
+        self.assertIn("steps", data)
+        self.assertIn("tasks", data)
+        self.assertEqual(data["steps"], ["StepA", "StepB"])
+        self.assertEqual(len(data["tasks"]), 1)
+        self.assertEqual(data["tasks"][0]["name"], "T1")
+        # description used for multiline info
+        self.assertIn("description", data["tasks"][0])
+        self.assertNotIn("info", data["tasks"][0])
+        self.assertEqual(data["tasks"][0]["steps"], {"StepA": "echo A", "StepB": "echo B"})
+
+    def test_cli_to_yaml_creates_parent_dir_and_omits_empty_steps(self):
+        """Conversion should create parent dir and omit empty steps."""
+        try:
+            import yaml
+        except ImportError:
+            self.skipTest("PyYAML not installed; skipping conversion test")
+
+        csv_in = os.path.join(self.test_dir, "convert2.csv")
+        with open(csv_in, "w", encoding="utf-8") as f:
+            f.write("TaskName,Info,Build,Test,Deploy\n")
+            f.write("T2,Info 2,echo build,,echo deploy\n")  # Empty 'Test'
+
+        out_dir = os.path.join(self.test_dir, "outdir")
+        out_yaml = os.path.join(out_dir, "wf.yaml")
+        test_args = ["taskpanel", csv_in, "--to-yaml", out_yaml]
+        with patch.object(sys, "argv", test_args):
+            cli.main()
+
+        self.assertTrue(os.path.isdir(out_dir))
+        with open(out_yaml, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        self.assertEqual(data["steps"], ["Build", "Test", "Deploy"])
+        # 'Test' absent in steps map for task due to empty command
+        self.assertEqual(data["tasks"][0]["steps"], {"Build": "echo build", "Deploy": "echo deploy"})
+
+    @patch("sys.exit")
+    def test_cli_to_yaml_import_error_yaml_package(self, mock_exit):
+        """If PyYAML is not installed, conversion should exit with message."""
+        # Prepare CSV
+        csv_in = os.path.join(self.test_dir, "convert3.csv")
+        with open(csv_in, "w", encoding="utf-8") as f:
+            f.write("TaskName,Info,Step\nT,Info,echo x\n")
+
+        out_yaml = os.path.join(self.test_dir, "out3.yaml")
+
+        # Patch builtins.__import__ to raise ImportError only for 'yaml'
+        import builtins as _bi
+
+        real_import = _bi.__import__
+
+        def fake_import(name, *a, **kw):
+            if name == "yaml":
+                raise ImportError("No module named yaml")
+            return real_import(name, *a, **kw)
+
+        test_args = ["taskpanel", csv_in, "--to-yaml", out_yaml]
+        with patch.object(sys, "argv", test_args), patch.object(_bi, "__import__", side_effect=fake_import):
+            cli.main()
+        mock_exit.assert_called_with(1)
+
+    @patch("taskpanel.cli.run")
+    def test_cli_to_yaml_does_not_invoke_run(self, mock_run):
+        """--to-yaml conversion should not start UI run()."""
+        try:
+            import yaml  # validate presence
+        except ImportError:
+            self.skipTest("PyYAML not installed; skipping conversion test")
+        csv_in = os.path.join(self.test_dir, "only_convert.csv")
+        with open(csv_in, "w", encoding="utf-8") as f:
+            f.write("TaskName,Info,Build\nT,Info,echo build\n")
+        out_yaml = os.path.join(self.test_dir, "only_convert.yaml")
+        test_args = ["taskpanel", csv_in, "--to-yaml", out_yaml]
+        with patch.object(sys, "argv", test_args):
+            cli.main()
+        self.assertTrue(os.path.exists(out_yaml))
+        mock_run.assert_not_called()
+
+    @patch("sys.exit")
+    @patch("sys.stderr")
+    def test_cli_to_yaml_write_failure(self, mock_stderr, mock_exit):
+        """Writing YAML to a directory path should fail and exit(1)."""
+        try:
+            import yaml
+        except ImportError:
+            self.skipTest("PyYAML not installed; skipping conversion test")
+        csv_in = os.path.join(self.test_dir, "wfail.csv")
+        with open(csv_in, "w", encoding="utf-8") as f:
+            f.write("TaskName,Info,A\nT,Info,echo a\n")
+        # Use directory path to trigger OSError on open(..., 'w')
+        out_yaml = self.test_dir
+        test_args = ["taskpanel", csv_in, "--to-yaml", out_yaml]
+        with patch.object(sys, "argv", test_args):
+            cli.main()
+        mock_exit.assert_called_with(1)
+        self.assertTrue(any("Failed to write YAML" in str(c) for c in mock_stderr.write.call_args_list))
+
+    @patch("sys.exit")
+    @patch("builtins.print")
+    @patch("taskpanel.cli.run")
+    def test_cli_run_handles_taskloaderror(self, mock_run, mock_print, mock_exit):
+        """run() raising TaskLoadError should be caught and exit(1)."""
+        from taskpanel.model import TaskLoadError as TLE
+        mock_run.side_effect = TLE("load boom")
+        test_args = ["taskpanel", self.csv_path]
+        with patch.object(sys, "argv", test_args):
+            cli.main()
+        mock_exit.assert_called_with(1)
+        self.assertTrue(any("Failed to load tasks" in str(c) for c in mock_print.call_args_list))
+
+    @patch("sys.exit")
+    @patch("builtins.print")
+    @patch("taskpanel.cli.run")
+    def test_cli_run_handles_oserror(self, mock_run, mock_print, mock_exit):
+        """run() raising OSError should be caught and exit(1)."""
+        mock_run.side_effect = OSError("os boom")
+        test_args = ["taskpanel", self.csv_path]
+        with patch.object(sys, "argv", test_args):
+            cli.main()
+        mock_exit.assert_called_with(1)
+        self.assertTrue(any("Operating System Error" in str(c) for c in mock_print.call_args_list))

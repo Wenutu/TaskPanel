@@ -248,6 +248,16 @@ class TestView(unittest.TestCase):
         self.assertEqual(result, "mocked_color")
         mock_color_pair.assert_called_once()
 
+    @patch("curses.color_pair")
+    def test_get_status_color_default_path(self, mock_cp):
+        """Non-mapped status should fall back to DEFAULT color."""
+        if get_status_color is None:
+            self.skipTest("get_status_color not available")
+        mock_cp.return_value = 42
+        # Pass an unknown status object to hit default branch
+        res = get_status_color(object())  # type: ignore
+        self.assertEqual(res, 42)
+
     def test_tail_file_nonexistent(self):
         """Test _tail_file with non-existent file."""
         if _tail_file is None:
@@ -840,3 +850,29 @@ class TestView(unittest.TestCase):
                     self.assertTrue(True)  # Expected with mocking
                 else:
                     self.skipTest(f"Function exists but fails with: {e}")
+
+    def test_draw_ui_terminal_too_small(self):
+        """When terminal height is too small, function should early-return."""
+        if view is None or ViewState is None:
+            self.skipTest("view not available")
+        stdscr = MagicMock()
+        # Force very small height
+        stdscr.getmaxyx.return_value = (view.MIN_APP_HEIGHT - 1, 80)
+        stdscr.refresh = MagicMock()
+        model = MagicMock(spec=TaskModel)
+        model.tasks = []
+        model.dynamic_header = ["Task", "Info"]
+        vs = ViewState()
+        try:
+            view.draw_ui(
+                stdscr=stdscr,
+                model=model,
+                vs=vs,
+                filtered_indices=[],
+                is_search_mode=False,
+                search_query="",
+                title="T",
+            )
+        except Exception as e:
+            self.fail(f"draw_ui raised unexpectedly: {e}")
+        self.assertTrue(stdscr.refresh.called)

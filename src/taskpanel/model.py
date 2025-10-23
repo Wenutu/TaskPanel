@@ -99,11 +99,11 @@ class Task:
 
 
 class TaskModel:
-    def __init__(self, csv_path: str):
-        self.csv_path = Path(csv_path)
-        base_name = self.csv_path.name
-        self.state_file_path = self.csv_path.parent / f".{base_name}{STATE_FILE_SUFFIX}"
-        self.log_dir = self.csv_path.parent / f".{base_name}{LOG_DIR_SUFFIX}"
+    def __init__(self, workflow_path: str):
+        self.workflow_path = Path(workflow_path)
+        base_name = self.workflow_path.name
+        self.state_file_path = self.workflow_path.parent / f".{base_name}{STATE_FILE_SUFFIX}"
+        self.log_dir = self.workflow_path.parent / f".{base_name}{LOG_DIR_SUFFIX}"
         self.tasks: List[Task] = []
         self.dynamic_header: List[str] = []
         self.state_lock = threading.RLock()
@@ -139,11 +139,152 @@ class TaskModel:
         except IOError:
             return None
 
+    def load_tasks(self):
+        """
+        Auto-detect and load tasks from CSV or YAML (PyYAML).
+        """
+        suffix = self.workflow_path.suffix.lower()
+        if suffix in (".yml", ".yaml"):
+            self._load_tasks_from_yaml()
+        else:
+            self.load_tasks_from_csv()
+
+    def _load_tasks_from_yaml(self):
+        """
+        YAML loader using PyYAML:
+        - Top-level keys:
+          - steps: [Step1, Step2, ...] (optional)
+          - tasks: list of task mappings:
+              name: str (required)
+              info|description: str (optional)
+              steps: mapping of step_name -> command string
+        """
+        print(f"Loading tasks from '{self.workflow_path}' (YAML)...")
+        try:
+            try:
+                import yaml  # Lazy import to avoid hard dependency for CSV-only usage
+            except ImportError as e:
+                raise TaskLoadError(
+                    "FATAL: YAML support requires 'yaml' package (PyYAML). Please install PyYAML."
+                ) from e
+
+            self.log_dir.mkdir(exist_ok=True)
+            with self.workflow_path.open("r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+
+            if not isinstance(data, dict):
+                raise TaskLoadError("FATAL: YAML root must be a mapping.")
+
+            # Strict top-level keys validation
+            allowed_top = {"steps", "tasks"}
+            extra_top = set(data.keys()) - allowed_top
+            if extra_top:
+                raise TaskLoadError(
+                    f"FATAL: Unsupported top-level keys: {', '.join(sorted(extra_top))}. Allowed: steps, tasks."
+                )
+
+            tasks_node = data.get("tasks")
+            if not isinstance(tasks_node, list):
+                raise TaskLoadError("FATAL: YAML must contain 'tasks' as a list.")
+
+            step_headers = data.get("steps")
+            if step_headers is not None:
+                if not isinstance(step_headers, list):
+                    raise TaskLoadError("FATAL: 'steps' must be a list when provided.")
+                # ensure all step headers are strings
+                for idx, s in enumerate(step_headers):
+                    if not isinstance(s, str):
+                        raise TaskLoadError(
+                            f"FATAL: 'steps' must be a list of strings, but item #{idx} is {type(s).__name__}."
+                        )
+
+            if not step_headers:
+                # Derive step headers from tasks' steps mapping in insertion order
+                seen = set()
+                derived: List[str] = []
+                for t in tasks_node:
+                    if not isinstance(t, dict):
+                        raise TaskLoadError("FATAL: Each task must be a mapping.")
+                    steps_map = t.get("steps") or {}
+                    if steps_map is None:
+                        continue
+                    if not isinstance(steps_map, dict):
+                        raise TaskLoadError("FATAL: 'steps' must be a mapping of step_name -> command.")
+                    for k in steps_map.keys():
+                        if not isinstance(k, str):
+                            raise TaskLoadError("FATAL: step names must be strings.")
+                        if k not in seen:
+                            seen.add(k)
+                            derived.append(k)
+                step_headers = derived
+
+            # Header setup
+            self.dynamic_header = ["TaskName", "Description"] + list(step_headers)
+
+            # Build tasks
+            allowed_task_keys = {"name", "info", "description", "steps"}
+            for idx, t in enumerate(tasks_node, start=2):
+                if not isinstance(t, dict):
+                    raise TaskLoadError(f"FATAL: Each task must be a mapping, got {type(t)}.")
+                # Strict task keys validation
+                extra_task_keys = set(t.keys()) - allowed_task_keys
+                if extra_task_keys:
+                    raise TaskLoadError(
+                        f"FATAL: Task contains unsupported keys: {', '.join(sorted(extra_task_keys))}. "
+                        "Allowed: name, info, description, steps."
+                    )
+                name = str(t.get("name") or "").strip()
+                info = str(t.get("info") or t.get("description") or "")
+                if not name:
+                    raise TaskLoadError(f"FATAL: Task at index {idx-2} is missing 'name'.")
+
+                uid = self._generate_task_uid(name, info)
+                steps_map = t.get("steps") or {}
+                if not isinstance(steps_map, dict):
+                    raise TaskLoadError(f"FATAL: 'steps' for task '{name}' must be a mapping.")
+                # Ensure all values are strings
+                for key, val in steps_map.items():
+                    if not isinstance(key, str):
+                        raise TaskLoadError(f"FATAL: step name '{key}' must be a string.")
+                    if not (isinstance(val, str) or val is None):
+                        raise TaskLoadError(
+                            f"FATAL: step command for '{key}' must be a string; got {type(val).__name__}."
+                        )
+
+                commands: List[str] = [str(steps_map.get(h, "") or "").strip() for h in step_headers]
+                structure_hash = self._generate_structure_hash(commands)
+                safe_name = "".join(c if c.isalnum() else "_" for c in name)
+                log_path = self.log_dir / f"{safe_name}_{uid[:8]}"
+                log_path.mkdir(exist_ok=True)
+
+                steps = [
+                    (
+                        Step(
+                            cmd,
+                            str(log_path / f"step{i}.stdout.log"),
+                            str(log_path / f"step{i}.stderr.log"),
+                            uid,
+                            i,
+                        )
+                        if cmd
+                        else None
+                    )
+                    for i, cmd in enumerate(commands)
+                ]
+                self.tasks.append(Task(idx, uid, name, info, steps, structure_hash))
+
+            print(f"Loaded {len(self.tasks)} tasks successfully.")
+            self._resume_state()
+        except TaskLoadError:
+            raise
+        except Exception as e:
+            raise TaskLoadError(f"FATAL: Could not load tasks from '{self.workflow_path}': {e}")
+
     def load_tasks_from_csv(self):
-        print(f"Loading tasks from '{self.csv_path}'...")
+        print(f"Loading tasks from '{self.workflow_path}'...")
         try:
             self.log_dir.mkdir(exist_ok=True)
-            with self.csv_path.open("r", encoding="utf-8") as f:
+            with self.workflow_path.open("r", encoding="utf-8") as f:
                 reader = csv.reader(f)
                 all_rows = [
                     row for row in reader if row and any(cell.strip() for cell in row)
@@ -195,7 +336,7 @@ class TaskModel:
             self._resume_state()
         except (FileNotFoundError, csv.Error, IOError) as e:
             raise TaskLoadError(
-                f"FATAL: Could not load tasks from '{self.csv_path}': {e}"
+                f"FATAL: Could not load tasks from '{self.workflow_path}': {e}"
             )
 
     def _apply_saved_state_to_task(self, task: Task, saved_state: Dict):
@@ -274,7 +415,7 @@ class TaskModel:
                 }
                 state_to_save.append(task_data)
         final_data = {
-            "source_csv_sha256": self._calculate_hash(self.csv_path),
+            "source_csv_sha256": self._calculate_hash(self.workflow_path),
             "tasks": state_to_save,
         }
         temp_file_path = self.state_file_path.with_suffix(
@@ -341,20 +482,26 @@ class TaskModel:
                 with open(step.log_path_stdout, "wb") as stdout_log, open(
                     step.log_path_stderr, "wb"
                 ) as stderr_log:
+                    preexec = os.setsid if hasattr(os, "setsid") else None
+                    creationflags = (
+                        getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
+                    )
                     process = subprocess.Popen(
                         step.command,
                         shell=True,
                         stdout=stdout_log,
                         stderr=stderr_log,
-                        preexec_fn=os.setsid,
+                        preexec_fn=preexec,
+                        creationflags=creationflags,
                     )
                     with self.state_lock:
                         if task.run_counter != run_counter:
                             self._kill_process_group(task_index, i, process)
                             return
                         step.process = process
+                        pid_val = getattr(process, "pid", "?")
                         self._log_step_debug(
-                            task_index, i, f"Process started PID: {process.pid}."
+                            task_index, i, f"Process started PID: {pid_val}."
                         )
                     process.wait()
                 with self.state_lock:

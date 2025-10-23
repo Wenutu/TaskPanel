@@ -48,6 +48,14 @@ class TestPackage(unittest.TestCase):
         self.assertTrue(hasattr(taskpanel, "run"))
         self.assertTrue(hasattr(taskpanel, "TaskLoadError"))
 
+    def test_all_exports(self):
+        """__all__ should expose run and TaskLoadError."""
+        if taskpanel is None:
+            self.skipTest("TaskPanel package not available")
+        self.assertTrue(hasattr(taskpanel, "__all__"))
+        self.assertIn("run", taskpanel.__all__)
+        self.assertIn("TaskLoadError", taskpanel.__all__)
+
 
 class TestProjectStructure(unittest.TestCase):
     """Test project structure for packaging."""
