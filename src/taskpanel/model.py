@@ -102,7 +102,9 @@ class TaskModel:
     def __init__(self, workflow_path: str):
         self.workflow_path = Path(workflow_path)
         base_name = self.workflow_path.name
-        self.state_file_path = self.workflow_path.parent / f".{base_name}{STATE_FILE_SUFFIX}"
+        self.state_file_path = (
+            self.workflow_path.parent / f".{base_name}{STATE_FILE_SUFFIX}"
+        )
         self.log_dir = self.workflow_path.parent / f".{base_name}{LOG_DIR_SUFFIX}"
         self.tasks: List[Task] = []
         self.dynamic_header: List[str] = []
@@ -209,7 +211,9 @@ class TaskModel:
                     if steps_map is None:
                         continue
                     if not isinstance(steps_map, dict):
-                        raise TaskLoadError("FATAL: 'steps' must be a mapping of step_name -> command.")
+                        raise TaskLoadError(
+                            "FATAL: 'steps' must be a mapping of step_name -> command."
+                        )
                     for k in steps_map.keys():
                         if not isinstance(k, str):
                             raise TaskLoadError("FATAL: step names must be strings.")
@@ -225,7 +229,9 @@ class TaskModel:
             allowed_task_keys = {"name", "info", "description", "steps"}
             for idx, t in enumerate(tasks_node, start=2):
                 if not isinstance(t, dict):
-                    raise TaskLoadError(f"FATAL: Each task must be a mapping, got {type(t)}.")
+                    raise TaskLoadError(
+                        f"FATAL: Each task must be a mapping, got {type(t)}."
+                    )
                 # Strict task keys validation
                 extra_task_keys = set(t.keys()) - allowed_task_keys
                 if extra_task_keys:
@@ -236,22 +242,30 @@ class TaskModel:
                 name = str(t.get("name") or "").strip()
                 info = str(t.get("info") or t.get("description") or "")
                 if not name:
-                    raise TaskLoadError(f"FATAL: Task at index {idx-2} is missing 'name'.")
+                    raise TaskLoadError(
+                        f"FATAL: Task at index {idx-2} is missing 'name'."
+                    )
 
                 uid = self._generate_task_uid(name, info)
                 steps_map = t.get("steps") or {}
                 if not isinstance(steps_map, dict):
-                    raise TaskLoadError(f"FATAL: 'steps' for task '{name}' must be a mapping.")
+                    raise TaskLoadError(
+                        f"FATAL: 'steps' for task '{name}' must be a mapping."
+                    )
                 # Ensure all values are strings
                 for key, val in steps_map.items():
                     if not isinstance(key, str):
-                        raise TaskLoadError(f"FATAL: step name '{key}' must be a string.")
+                        raise TaskLoadError(
+                            f"FATAL: step name '{key}' must be a string."
+                        )
                     if not (isinstance(val, str) or val is None):
                         raise TaskLoadError(
                             f"FATAL: step command for '{key}' must be a string; got {type(val).__name__}."
                         )
 
-                commands: List[str] = [str(steps_map.get(h, "") or "").strip() for h in step_headers]
+                commands: List[str] = [
+                    str(steps_map.get(h, "") or "").strip() for h in step_headers
+                ]
                 structure_hash = self._generate_structure_hash(commands)
                 safe_name = "".join(c if c.isalnum() else "_" for c in name)
                 log_path = self.log_dir / f"{safe_name}_{uid[:8]}"
@@ -278,7 +292,9 @@ class TaskModel:
         except TaskLoadError:
             raise
         except Exception as e:
-            raise TaskLoadError(f"FATAL: Could not load tasks from '{self.workflow_path}': {e}")
+            raise TaskLoadError(
+                f"FATAL: Could not load tasks from '{self.workflow_path}': {e}"
+            )
 
     def load_tasks_from_csv(self):
         print(f"Loading tasks from '{self.workflow_path}'...")
@@ -484,7 +500,9 @@ class TaskModel:
                 ) as stderr_log:
                     preexec = os.setsid if hasattr(os, "setsid") else None
                     creationflags = (
-                        getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
+                        getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                        if os.name == "nt"
+                        else 0
                     )
                     process = subprocess.Popen(
                         step.command,

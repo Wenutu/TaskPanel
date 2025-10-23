@@ -12,6 +12,7 @@ import sys
 from . import TaskLoadError, run
 from .model import TaskModel
 
+
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -29,9 +30,7 @@ Examples:
         """,
     )
 
-    parser.add_argument(
-        "workflow_path", help="Path to the workflow file (CSV or YAML)"
-    )
+    parser.add_argument("workflow_path", help="Path to the workflow file (CSV or YAML)")
 
     parser.add_argument(
         "--workers",
@@ -77,8 +76,9 @@ Examples:
             try:
                 import yaml
             except ImportError as e:
+                # print error
                 print(
-                    "Error: YAML conversion requires 'yaml' package (PyYAML). Please install PyYAML.",
+                    f"Error: YAML conversion requires 'yaml' package (PyYAML). Please install PyYAML: {e}",
                     file=sys.stderr,
                 )
                 sys.exit(1)
@@ -144,7 +144,9 @@ Examples:
     print()
 
     try:
-        run(workflow_path=args.workflow_path, max_workers=args.workers, title=args.title)
+        run(
+            workflow_path=args.workflow_path, max_workers=args.workers, title=args.title
+        )
     except FileNotFoundError as e:
         print("Error: Could not find the specified workflow file.", file=sys.stderr)
         print(str(e), file=sys.stderr)

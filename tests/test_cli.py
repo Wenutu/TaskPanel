@@ -376,8 +376,8 @@ class TestCLI(unittest.TestCase):
                 "  - name: T1\n"
                 "    info: I1\n"
                 "    steps:\n"
-                "      A: \"echo a\"\n"
-                "      B: \"echo b\"\n"
+                '      A: "echo a"\n'
+                '      B: "echo b"\n'
             )
 
         test_args = ["taskpanel", yaml_path, "-w", "3", "-t", "YAML Title"]
@@ -398,7 +398,12 @@ class TestCLI(unittest.TestCase):
         with open(dummy_yaml_in, "w", encoding="utf-8") as f:
             f.write("steps: []\ntasks: []\n")
 
-        test_args = ["taskpanel", dummy_yaml_in, "--to-yaml", os.path.join(self.test_dir, "out.yaml")]
+        test_args = [
+            "taskpanel",
+            dummy_yaml_in,
+            "--to-yaml",
+            os.path.join(self.test_dir, "out.yaml"),
+        ]
         with patch.object(sys, "argv", test_args):
             cli.main()
 
@@ -417,7 +422,7 @@ class TestCLI(unittest.TestCase):
         csv_in = os.path.join(self.test_dir, "convert.csv")
         with open(csv_in, "w", encoding="utf-8") as f:
             f.write("TaskName,Info,StepA,StepB\n")
-            f.write("T1,\"Line1\nLine2\",echo A,echo B\n")
+            f.write('T1,"Line1\nLine2",echo A,echo B\n')
 
         out_yaml = os.path.join(self.test_dir, "out.yaml")
         test_args = ["taskpanel", csv_in, "--to-yaml", out_yaml]
@@ -437,7 +442,9 @@ class TestCLI(unittest.TestCase):
         # description used for multiline info
         self.assertIn("description", data["tasks"][0])
         self.assertNotIn("info", data["tasks"][0])
-        self.assertEqual(data["tasks"][0]["steps"], {"StepA": "echo A", "StepB": "echo B"})
+        self.assertEqual(
+            data["tasks"][0]["steps"], {"StepA": "echo A", "StepB": "echo B"}
+        )
 
     def test_cli_to_yaml_creates_parent_dir_and_omits_empty_steps(self):
         """Conversion should create parent dir and omit empty steps."""
@@ -462,7 +469,9 @@ class TestCLI(unittest.TestCase):
             data = yaml.safe_load(f)
         self.assertEqual(data["steps"], ["Build", "Test", "Deploy"])
         # 'Test' absent in steps map for task due to empty command
-        self.assertEqual(data["tasks"][0]["steps"], {"Build": "echo build", "Deploy": "echo deploy"})
+        self.assertEqual(
+            data["tasks"][0]["steps"], {"Build": "echo build", "Deploy": "echo deploy"}
+        )
 
     @patch("sys.exit")
     def test_cli_to_yaml_import_error_yaml_package(self, mock_exit):
@@ -485,7 +494,9 @@ class TestCLI(unittest.TestCase):
             return real_import(name, *a, **kw)
 
         test_args = ["taskpanel", csv_in, "--to-yaml", out_yaml]
-        with patch.object(sys, "argv", test_args), patch.object(_bi, "__import__", side_effect=fake_import):
+        with patch.object(sys, "argv", test_args), patch.object(
+            _bi, "__import__", side_effect=fake_import
+        ):
             cli.main()
         mock_exit.assert_called_with(1)
 
@@ -523,7 +534,12 @@ class TestCLI(unittest.TestCase):
         with patch.object(sys, "argv", test_args):
             cli.main()
         mock_exit.assert_called_with(1)
-        self.assertTrue(any("Failed to write YAML" in str(c) for c in mock_stderr.write.call_args_list))
+        self.assertTrue(
+            any(
+                "Failed to write YAML" in str(c)
+                for c in mock_stderr.write.call_args_list
+            )
+        )
 
     @patch("sys.exit")
     @patch("builtins.print")
@@ -531,12 +547,15 @@ class TestCLI(unittest.TestCase):
     def test_cli_run_handles_taskloaderror(self, mock_run, mock_print, mock_exit):
         """run() raising TaskLoadError should be caught and exit(1)."""
         from taskpanel.model import TaskLoadError as TLE
+
         mock_run.side_effect = TLE("load boom")
         test_args = ["taskpanel", self.csv_path]
         with patch.object(sys, "argv", test_args):
             cli.main()
         mock_exit.assert_called_with(1)
-        self.assertTrue(any("Failed to load tasks" in str(c) for c in mock_print.call_args_list))
+        self.assertTrue(
+            any("Failed to load tasks" in str(c) for c in mock_print.call_args_list)
+        )
 
     @patch("sys.exit")
     @patch("builtins.print")
@@ -548,4 +567,6 @@ class TestCLI(unittest.TestCase):
         with patch.object(sys, "argv", test_args):
             cli.main()
         mock_exit.assert_called_with(1)
-        self.assertTrue(any("Operating System Error" in str(c) for c in mock_print.call_args_list))
+        self.assertTrue(
+            any("Operating System Error" in str(c) for c in mock_print.call_args_list)
+        )

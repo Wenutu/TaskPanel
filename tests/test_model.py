@@ -519,12 +519,12 @@ class TestModel(unittest.TestCase):
             "  - name: Task Y\n"
             "    info: Desc\n"
             "    steps:\n"
-            "      Build: \"echo build\"\n"
-            "      Test: \"echo test\"\n"
+            '      Build: "echo build"\n'
+            '      Test: "echo test"\n'
             "  - name: Task Z\n"
             "    description: ZZZ\n"
             "    steps:\n"
-            "      Build: \"echo b2\"\n"
+            '      Build: "echo b2"\n'
         )
         yaml_path.write_text(yaml_content, encoding="utf-8")
 
@@ -535,7 +535,10 @@ class TestModel(unittest.TestCase):
         self.assertEqual(task_model.dynamic_header[:2], ["TaskName", "Description"])
         self.assertEqual(task_model.dynamic_header[2:], ["Build", "Test"])
         self.assertEqual(task_model.tasks[0].name, "Task Y")
-        self.assertEqual([s.command for s in task_model.tasks[0].steps if s], ["echo build", "echo test"])
+        self.assertEqual(
+            [s.command for s in task_model.tasks[0].steps if s],
+            ["echo build", "echo test"],
+        )
         # Task Z 缺少 Test，应为 None
         self.assertIsNone(task_model.tasks[1].steps[1])
 
@@ -550,7 +553,7 @@ class TestModel(unittest.TestCase):
 
         ypath = Path(self.test_dir) / "bad_top.yaml"
         ypath.write_text(
-            "meta: {}\nsteps: [A]\ntasks:\n  - name: T\n    steps:\n      A: \"echo a\"\n",
+            'meta: {}\nsteps: [A]\ntasks:\n  - name: T\n    steps:\n      A: "echo a"\n',
             encoding="utf-8",
         )
         tm = TaskModel(str(ypath))
@@ -572,7 +575,7 @@ class TestModel(unittest.TestCase):
             "  - name: T\n"
             "    owner: Bob\n"  # Unsupported key
             "    steps:\n"
-            "      A: \"echo a\"\n",
+            '      A: "echo a"\n',
             encoding="utf-8",
         )
         with self.assertRaises(TaskLoadError):
@@ -585,8 +588,8 @@ class TestModel(unittest.TestCase):
             "tasks:\n"
             "  - name: T\n"
             "    steps:\n"
-            "      A: 123\n"      # Non-string value
-            "      B: \"echo b\"\n",
+            "      A: 123\n"  # Non-string value
+            '      B: "echo b"\n',
             encoding="utf-8",
         )
         with self.assertRaises(TaskLoadError):
@@ -608,7 +611,7 @@ class TestModel(unittest.TestCase):
             "      Line1\n"
             "      Line2\n"
             "    steps:\n"
-            "      S: \"echo s\"\n",
+            '      S: "echo s"\n',
             encoding="utf-8",
         )
         tm = TaskModel(str(y3))
@@ -622,6 +625,7 @@ class TestModel(unittest.TestCase):
     def test_apply_saved_state_structure_mismatch(self):
         """When structure hash mismatches, saved state is ignored."""
         from taskpanel.model import Task, Step
+
         tm = TaskModel(str(self.csv_path))
         # Build a single-task model
         uid = tm._generate_task_uid("T", "I")
@@ -631,25 +635,40 @@ class TestModel(unittest.TestCase):
         task = Task(1, uid, "T", "I", [step], tm._generate_structure_hash(["echo a"]))
         tm.tasks = [task]
         # Apply a saved state with different structure_hash
-        tm._apply_saved_state_to_task(task, {"structure_hash": "DIFF", "steps": [{"status": "SUCCESS"}]})
+        tm._apply_saved_state_to_task(
+            task, {"structure_hash": "DIFF", "steps": [{"status": "SUCCESS"}]}
+        )
         self.assertEqual(task.steps[0].status, Status.PENDING)
 
     # --- New: _apply_saved_state_to_task interrupted resume path ---
     def test_apply_saved_state_interrupted(self):
         """Interrupted (RUNNING/KILLED) step should trigger partial restore only before the point."""
         from taskpanel.model import Task, Step
+
         tm = TaskModel(str(self.csv_path))
         uid = tm._generate_task_uid("T", "I")
         ld = Path(self.test_dir) / ".tasks.csv.logs"
         ld.mkdir(exist_ok=True)
         s0 = Step("echo a", str(ld / "0.out"), str(ld / "0.err"), uid, 0)
         s1 = Step("echo b", str(ld / "1.out"), str(ld / "1.err"), uid, 1)
-        task = Task(1, uid, "T", "I", [s0, s1], tm._generate_structure_hash(["echo a", "echo b"]))
+        task = Task(
+            1,
+            uid,
+            "T",
+            "I",
+            [s0, s1],
+            tm._generate_structure_hash(["echo a", "echo b"]),
+        )
         # Saved: first success, second running -> interrupted_at = 1
-        saved = {"structure_hash": task.structure_hash, "steps": [{"status": "SUCCESS"}, {"status": "RUNNING"}]}
+        saved = {
+            "structure_hash": task.structure_hash,
+            "steps": [{"status": "SUCCESS"}, {"status": "RUNNING"}],
+        }
         tm._apply_saved_state_to_task(task, saved)
         self.assertEqual(task.steps[0].status, Status.SUCCESS)
-        self.assertEqual(task.steps[1].status, Status.PENDING)  # interrupted step stays/reset to PENDING
+        self.assertEqual(
+            task.steps[1].status, Status.PENDING
+        )  # interrupted step stays/reset to PENDING
 
     # --- New: _resume_state with corrupt state file ---
     def test_resume_state_corrupt_file(self):
@@ -667,10 +686,14 @@ class TestModel(unittest.TestCase):
     def test_kill_process_group_processlookup(self):
         """ProcessLookupError during kill should be handled."""
         from types import SimpleNamespace
+
         tm = TaskModel(str(self.csv_path))
-        fake_proc = SimpleNamespace(pid=12345, poll=lambda: None, wait=lambda timeout=None: None)
-        with patch("taskpanel.model.os.getpgid", side_effect=ProcessLookupError), \
-             patch("taskpanel.model.os.killpg") as mock_kill:
+        fake_proc = SimpleNamespace(
+            pid=12345, poll=lambda: None, wait=lambda timeout=None: None
+        )
+        with patch("taskpanel.model.os.getpgid", side_effect=ProcessLookupError), patch(
+            "taskpanel.model.os.killpg"
+        ) as mock_kill:
             tm._kill_process_group(0, 0, fake_proc)
         self.assertFalse(mock_kill.called)
 
@@ -679,13 +702,21 @@ class TestModel(unittest.TestCase):
         """TimeoutExpired during kill escalates to SIGKILL."""
         import subprocess as sp
         from types import SimpleNamespace
+
         tm = TaskModel(str(self.csv_path))
+
         class FakeProc:
             pid = 123
-            def poll(self): return None
-            def wait(self, timeout=None): raise sp.TimeoutExpired(cmd="x", timeout=0.1)
-        with patch("taskpanel.model.os.getpgid", return_value=999), \
-             patch("taskpanel.model.os.killpg") as mock_kill:
+
+            def poll(self):
+                return None
+
+            def wait(self, timeout=None):
+                raise sp.TimeoutExpired(cmd="x", timeout=0.1)
+
+        with patch("taskpanel.model.os.getpgid", return_value=999), patch(
+            "taskpanel.model.os.killpg"
+        ) as mock_kill:
             tm._kill_process_group(0, 0, FakeProc())
         self.assertGreaterEqual(mock_kill.call_count, 2)  # SIGTERM then SIGKILL
 
@@ -693,14 +724,21 @@ class TestModel(unittest.TestCase):
     def test_run_task_row_failure_marks_skipped(self):
         """Non-zero return code should mark later steps as SKIPPED."""
         from taskpanel.model import Task, Step
+
         self._create_csv("TaskName,Info,Cmd1,Cmd2\nT,Info,echo a,echo b\n")
         tm = TaskModel(str(self.csv_path))
         tm.load_tasks_from_csv()
+
         # Patch Popen to return returncode=1 (failure)
         class FakeP:
             returncode = 1
-            def __init__(self, *a, **k): pass
-            def wait(self): return None
+
+            def __init__(self, *a, **k):
+                pass
+
+            def wait(self):
+                return None
+
         with patch("taskpanel.model.subprocess.Popen", return_value=FakeP()):
             tm.run_task_row(0, tm.tasks[0].run_counter, 0)
         self.assertEqual(tm.tasks[0].steps[0].status, Status.FAILED)
@@ -711,10 +749,13 @@ class TestModel(unittest.TestCase):
     def test_run_task_row_subprocess_error(self):
         """Popen raising FileNotFoundError should mark FAILED."""
         from taskpanel.model import Task, Step
+
         self._create_csv("TaskName,Info,Cmd\nT,Info,echo a\n")
         tm = TaskModel(str(self.csv_path))
         tm.load_tasks_from_csv()
-        with patch("taskpanel.model.subprocess.Popen", side_effect=FileNotFoundError("no bin")):
+        with patch(
+            "taskpanel.model.subprocess.Popen", side_effect=FileNotFoundError("no bin")
+        ):
             tm.run_task_row(0, tm.tasks[0].run_counter, 0)
         self.assertEqual(tm.tasks[0].steps[0].status, Status.FAILED)
 
@@ -722,6 +763,7 @@ class TestModel(unittest.TestCase):
     def test_rerun_task_from_step_removes_logs(self):
         """Rerun should clear logs and reset to PENDING."""
         from taskpanel.model import Task, Step
+
         self._create_csv("TaskName,Info,Cmd1,Cmd2\nT,Info,echo a,echo b\n")
         tm = TaskModel(str(self.csv_path))
         tm.load_tasks_from_csv()
@@ -742,6 +784,7 @@ class TestModel(unittest.TestCase):
     def test_kill_task_row_marks_killed_and_skipped(self):
         """Killing a running row should mark current as KILLED and next PENDING as SKIPPED."""
         from taskpanel.model import Task, Step
+
         self._create_csv("TaskName,Info,Cmd1,Cmd2\nT,Info,sleep 1,echo z\n")
         tm = TaskModel(str(self.csv_path))
         tm.load_tasks_from_csv()

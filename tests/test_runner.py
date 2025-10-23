@@ -737,8 +737,8 @@ class TestRunner(unittest.TestCase):
                 "  - name: 'Y Task'\n"
                 "    info: 'Info'\n"
                 "    steps:\n"
-                "      Step1: \"echo one\"\n"
-                "      Step2: \"echo two\"\n"
+                '      Step1: "echo one"\n'
+                '      Step2: "echo two"\n'
             )
 
         mock_wrapper.side_effect = KeyboardInterrupt()
@@ -758,9 +758,9 @@ class TestRunner(unittest.TestCase):
         if runner is None:
             self.skipTest("runner module not available")
 
-        with patch("curses.curs_set"), patch("taskpanel.runner.setup_colors"), patch.object(
-            runner.TaskModel, "load_tasks"
-        ):
+        with patch("curses.curs_set"), patch(
+            "taskpanel.runner.setup_colors"
+        ), patch.object(runner.TaskModel, "load_tasks"):
             mock_stdscr = MagicMock()
             controller = runner.AppController(mock_stdscr, "/tmp/no.csv", 1, "T")
             # Inject model tasks
@@ -781,9 +781,9 @@ class TestRunner(unittest.TestCase):
         if runner is None:
             self.skipTest("runner module not available")
 
-        with patch("curses.curs_set"), patch("taskpanel.runner.setup_colors"), patch.object(
-            runner.TaskModel, "load_tasks"
-        ):
+        with patch("curses.curs_set"), patch(
+            "taskpanel.runner.setup_colors"
+        ), patch.object(runner.TaskModel, "load_tasks"):
             mock_stdscr = MagicMock()
             c = runner.AppController(mock_stdscr, "/tmp/no.csv", 1, "T")
             old = c.view_state.debug_panel_visible
@@ -800,12 +800,12 @@ class TestRunner(unittest.TestCase):
     def test_process_input_search_mode_typing_and_submit(self):
         if runner is None:
             self.skipTest("runner module not available")
-        with patch("curses.curs_set"), patch("taskpanel.runner.setup_colors"), patch.object(
-            runner.TaskModel, "load_tasks"
-        ):
+        with patch("curses.curs_set"), patch(
+            "taskpanel.runner.setup_colors"
+        ), patch.object(runner.TaskModel, "load_tasks"):
             stdscr = MagicMock()
             # Provide sequential keys: enter search '/', type 'a', ENTER
-            inputs = [ord('/'), ord('a'), 10]
+            inputs = [ord("/"), ord("a"), 10]
             stdscr.getch.side_effect = inputs + [-1]
             c = runner.AppController(stdscr, "/tmp/no.csv", 1, "T")
             # Inject tasks to match query
@@ -823,11 +823,16 @@ class TestRunner(unittest.TestCase):
     def test_process_input_backspace_and_escape(self):
         if runner is None:
             self.skipTest("runner module not available")
-        with patch("curses.curs_set"), patch("taskpanel.runner.setup_colors"), patch.object(
-            runner.TaskModel, "load_tasks"
-        ):
+        with patch("curses.curs_set"), patch(
+            "taskpanel.runner.setup_colors"
+        ), patch.object(runner.TaskModel, "load_tasks"):
             stdscr = MagicMock()
-            stdscr.getch.side_effect = [ord('/'), 127, 27, 27]  # '/', backspace, ESC(clear), ESC(exit)
+            stdscr.getch.side_effect = [
+                ord("/"),
+                127,
+                27,
+                27,
+            ]  # '/', backspace, ESC(clear), ESC(exit)
             c = runner.AppController(stdscr, "/tmp/no.csv", 1, "T")
             c.search_query = "x"
             # enter search mode
@@ -845,9 +850,9 @@ class TestRunner(unittest.TestCase):
     def test_rerun_blocked_and_allowed(self):
         if runner is None:
             self.skipTest("runner module not available")
-        with patch("curses.curs_set"), patch("taskpanel.runner.setup_colors"), \
-             patch("taskpanel.runner.curses.flash") as mock_flash, \
-             patch.object(runner.TaskModel, "load_tasks"):
+        with patch("curses.curs_set"), patch("taskpanel.runner.setup_colors"), patch(
+            "taskpanel.runner.curses.flash"
+        ) as mock_flash, patch.object(runner.TaskModel, "load_tasks"):
             stdscr = MagicMock()
             c = runner.AppController(stdscr, "/tmp/no.csv", 1, "T")
             # Prepare one task with two steps
@@ -864,6 +869,7 @@ class TestRunner(unittest.TestCase):
             # Allowed: previous steps SUCCESS, selected step present
             mock_flash.reset_mock()
             from taskpanel.model import Step, Status
+
             step0 = MagicMock()
             step0.status = Status.SUCCESS
             step1 = MagicMock()
@@ -877,16 +883,21 @@ class TestRunner(unittest.TestCase):
     def test_start_initial_tasks_submits_resume(self):
         if runner is None:
             self.skipTest("runner module not available")
-        with patch("curses.curs_set"), patch("taskpanel.runner.setup_colors"), patch.object(
-            runner.TaskModel, "load_tasks"
-        ):
+        with patch("curses.curs_set"), patch(
+            "taskpanel.runner.setup_colors"
+        ), patch.object(runner.TaskModel, "load_tasks"):
             stdscr = MagicMock()
             c = runner.AppController(stdscr, "/tmp/no.csv", 1, "T")
             # Task with first SUCCESS then PENDING should trigger resume from step 1
             from taskpanel.model import Status
-            step0 = MagicMock(); step0.status = Status.SUCCESS
-            step1 = MagicMock(); step1.status = Status.PENDING
-            task = MagicMock(); task.steps = [step0, step1]; task.name = "T"
+
+            step0 = MagicMock()
+            step0.status = Status.SUCCESS
+            step1 = MagicMock()
+            step1.status = Status.PENDING
+            task = MagicMock()
+            task.steps = [step0, step1]
+            task.name = "T"
             c.model.tasks = [task]
             with patch.object(c.executor, "submit") as mock_submit:
                 c.start_initial_tasks()
@@ -895,12 +906,14 @@ class TestRunner(unittest.TestCase):
     def test_nav_right_updates_left_most_step(self):
         if runner is None:
             self.skipTest("runner module not available")
-        with patch("curses.curs_set"), patch("taskpanel.runner.setup_colors"), patch.object(
-            runner.TaskModel, "load_tasks"
-        ):
+        with patch("curses.curs_set"), patch(
+            "taskpanel.runner.setup_colors"
+        ), patch.object(runner.TaskModel, "load_tasks"):
             stdscr = MagicMock()
             c = runner.AppController(stdscr, "/tmp/no.csv", 1, "T")
-            task = MagicMock(); task.steps = [1, 2]; c.model.tasks = [task]
+            task = MagicMock()
+            task.steps = [1, 2]
+            c.model.tasks = [task]
             c.filtered_task_indices = [0]
             # Simulate layout with only 1 visible step
             c.view_state.cached_layout = MagicMock(num_visible_steps=1, task_list_h=1)
@@ -912,9 +925,9 @@ class TestRunner(unittest.TestCase):
     def test_nav_page_down(self):
         if runner is None:
             self.skipTest("runner module not available")
-        with patch("curses.curs_set"), patch("taskpanel.runner.setup_colors"), patch.object(
-            runner.TaskModel, "load_tasks"
-        ):
+        with patch("curses.curs_set"), patch(
+            "taskpanel.runner.setup_colors"
+        ), patch.object(runner.TaskModel, "load_tasks"):
             stdscr = MagicMock()
             c = runner.AppController(stdscr, "/tmp/no.csv", 1, "T")
             c.filtered_task_indices = list(range(10))
