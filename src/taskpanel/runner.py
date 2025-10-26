@@ -384,7 +384,7 @@ def run(workflow_path: str, max_workers: int, title: str = "TaskPanel"):
     Public function to launch the TaskPanel UI.
 
     Args:
-        workflow_path (str): Path to the tasks CSV file.
+        workflow_path (str): Path to the workflow file (CSV or YAML).
         max_workers (int): The maximum number of tasks to run in parallel.
         title (str, optional): A custom title for the application window.
                                Defaults to "TaskPanel".
@@ -395,7 +395,10 @@ def run(workflow_path: str, max_workers: int, title: str = "TaskPanel"):
             f"max_workers must be a positive integer, but got {max_workers}"
         )
     if not os.path.exists(workflow_path):
-        raise FileNotFoundError(f"Error: CSV file not found at '{workflow_path}'")
+        # Use a format-agnostic message for both CSV and YAML
+        raise FileNotFoundError(
+            f"Workflow file not found (CSV/YAML): '{workflow_path}'"
+        )
     if os.name != "posix":
         raise OSError("Error: This script requires a POSIX-like OS (Linux, macOS).")
 

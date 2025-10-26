@@ -449,11 +449,34 @@ class TaskModel:
             if temp_file_path.exists():
                 temp_file_path.unlink()
 
-    def handle_step_failure(self, task_index: int, step_index: int, error_message: str):
+    def handle_step_failure(self, task_index: int, step_index: int, *args):
+        """
+        Backward-compatible failure handler.
+        Supports:
+          - handle_step_failure(task_index, step_index, error_message)
+          - handle_step_failure(task_index, step_index, run_counter, error_message)
+        The run_counter guard prevents stale workers from overwriting state.
+        """
+        # Parse arguments for backward compatibility
+        run_counter = None
+        error_message = ""
+        if len(args) == 1:
+            # Legacy signature: (error_message)
+            error_message = str(args[0])
+        elif len(args) >= 2:
+            run_counter = args[0]
+            error_message = str(args[1])
+
         with self.state_lock:
             task = self.tasks[task_index]
+            # Default to current run_counter when not provided by caller
+            if run_counter is None:
+                run_counter = task.run_counter
             step = task.steps[step_index]
-            if task.run_counter != task.run_counter:
+            # Guard: ignore failure if this worker is stale
+            if task.run_counter != run_counter:
+                return
+            if not step:
                 return
             step.status = Status.FAILED
             step.start_time = None
@@ -542,7 +565,7 @@ class TaskModel:
                         break
             except (FileNotFoundError, OSError, subprocess.SubprocessError) as e:
                 err_msg = f"CRITICAL ERROR: Failed to execute command. Details: {e}"
-                self.handle_step_failure(task_index, i, err_msg)
+                self.handle_step_failure(task_index, i, run_counter, err_msg)
                 break
 
     def _kill_process_group(

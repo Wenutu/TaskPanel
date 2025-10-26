@@ -62,9 +62,18 @@ Examples:
 
     args = parser.parse_args()
 
-    # Validate workflow file exists
+    # Validate workflow file exists with context hints
     if not os.path.isfile(args.workflow_path):
+        cwd = os.getcwd()
+        ext = os.path.splitext(args.workflow_path)[1].lower()
         print(f"Error: File '{args.workflow_path}' not found.", file=sys.stderr)
+        print(f"Current working directory: {cwd}", file=sys.stderr)
+        # Hint if extension is not a common CSV/YAML suffix
+        if ext not in (".csv", ".yaml", ".yml"):
+            print(
+                "Hint: Unrecognized file extension. TaskPanel accepts .csv, .yaml, .yml.",
+                file=sys.stderr,
+            )
         sys.exit(1)
 
     # Handle CSV to YAML conversion if requested
@@ -148,12 +157,41 @@ Examples:
             workflow_path=args.workflow_path, max_workers=args.workers, title=args.title
         )
     except FileNotFoundError as e:
+        # Provide more context for path and format
+        ext = os.path.splitext(args.workflow_path)[1].lower()
         print("Error: Could not find the specified workflow file.", file=sys.stderr)
         print(str(e), file=sys.stderr)
+        if ext not in (".csv", ".yaml", ".yml"):
+            print(
+                "Hint: Unrecognized file extension. TaskPanel accepts .csv, .yaml, .yml.",
+                file=sys.stderr,
+            )
+        print(f"Current working directory: {os.getcwd()}", file=sys.stderr)
         sys.exit(1)
     except TaskLoadError as e:
+        # Add format-specific hints
+        suffix = os.path.splitext(args.workflow_path)[1].lower()
         print("Error: Failed to load tasks from the workflow file.", file=sys.stderr)
         print(str(e), file=sys.stderr)
+        if suffix in (".yaml", ".yml"):
+            print(
+                "Hint (YAML): Only top-level keys 'steps' and 'tasks' are allowed; "
+                "each task may contain 'name', 'info'/'description', and 'steps'.",
+                file=sys.stderr,
+            )
+            if "requires 'yaml' package" in str(e).lower():
+                print("Hint: Install PyYAML: pip install pyyaml", file=sys.stderr)
+        elif suffix == ".csv":
+            print(
+                "Hint (CSV): Header must include at least 'TaskName' and 'Info'; "
+                "ensure rows are not empty and step columns align with the header.",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                "Hint: TaskPanel auto-detects CSV/YAML by extension (.csv, .yaml, .yml).",
+                file=sys.stderr,
+            )
         sys.exit(1)
     except OSError as e:
         print(f"Operating System Error: {e}", file=sys.stderr)

@@ -153,6 +153,11 @@ Validation rules:
 - Only task keys name, info, description, steps are allowed
 - steps mapping must have string keys and string or null values
 
+Notes (YAML specifics):
+- If top-level steps is omitted, TaskPanel derives the step headers in the order of first appearance across tasks. For stable ordering across runs and clearer UI, it is recommended to define steps explicitly at the top level.
+- A step command can be null or empty per task; it effectively removes the step for that task while the step name can still appear in the top-level steps.
+- PyYAML is required for YAML parsing and CSV→YAML conversion: pip install pyyaml
+
 ## Usage
 
 ### Command Line Interface
@@ -174,6 +179,7 @@ taskpanel tasks.csv --to-yaml tasks.yaml
 - Output YAML contains only steps and tasks at top level
 - Single-line Info becomes info; multiline Info becomes description
 - Empty step cells are omitted from a task’s steps mapping (still listed in top-level steps)
+- Conversion preserves the header order; for consistent visual order in YAML-only workflows, consider providing a top-level steps list
 
 ### Python Library
 
@@ -241,6 +247,21 @@ make install-dev
 
 - OS: POSIX-like only (Linux, macOS)
 - YAML: Parsing and conversion require PyYAML (`pip install pyyaml`)
+
+## Troubleshooting
+
+Common issues and tips:
+- Workflow file not found
+  - Ensure the path is correct. TaskPanel accepts .csv, .yaml, .yml. Check your current working directory.
+- YAML load errors
+  - Only top-level keys steps and tasks are allowed.
+  - Each task allows only name, info/description, steps.
+  - Ensure PyYAML is installed: pip install pyyaml
+- CSV load errors
+  - Header must include at least TaskName and Info.
+  - Empty rows are ignored; ensure step columns align with your header.
+- Unexpected step order in YAML
+  - If top-level steps is omitted, order is derived by first appearance across tasks. Provide steps at top-level to lock order.
 
 ## License
 
